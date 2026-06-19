@@ -36,6 +36,26 @@ html, body {
   background: radial-gradient(ellipse at 50% 35%, rgba(8,24,46,0.35) 0%, rgba(3,9,18,0.72) 80%);
   backdrop-filter: blur(2px);
 }
+/* The menu keeps the flying scene clearly visible: title sits high, and only a
+   soft top/bottom shade keeps the text legible over the live game. */
+#menu {
+  align-items: flex-start;
+  background:
+    radial-gradient(ellipse at 50% 16%, rgba(4,12,26,0.6) 0%, rgba(4,12,26,0) 46%),
+    linear-gradient(180deg, rgba(3,9,18,0.32) 0%, rgba(3,9,18,0.06) 42%, rgba(3,9,18,0.42) 100%);
+  backdrop-filter: none;
+}
+#menu .menu-inner { padding-top: clamp(2.5rem, 13vh, 8rem); }
+#menu .tagline, #menu .controls-hint, .patch-version {
+  text-shadow: 0 1px 10px rgba(0,0,0,0.7);
+}
+.patch-version {
+  position: absolute;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  right: 18px;
+  font-size: 0.72rem; letter-spacing: 0.2em; font-weight: 700;
+  color: #8fb4d4; opacity: 0.85;
+}
 .loader-inner, .menu-inner { padding: 2rem; max-width: 90vw; }
 
 .logo {

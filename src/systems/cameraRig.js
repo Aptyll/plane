@@ -28,8 +28,10 @@ export class CameraRig {
   }
 
   setMode(name) {
+    // 'menu' is an attract-screen-only view and isn't part of the cycle list.
     const i = MODES.indexOf(name);
-    if (i >= 0) { this.modeIndex = i; this.mode = name; }
+    this.mode = name;
+    if (i >= 0) this.modeIndex = i;
   }
 
   get label() { return LABELS[this.mode]; }
@@ -78,6 +80,16 @@ export class CameraRig {
       this._desired.copy(p).add(orbit);
       this.camera.position.lerp(this._desired, Math.min(1, (1 - Math.pow(0.02, dt))));
       this._look.copy(p);
+      this._applyLook(this._up, dt);
+    } else if (this.mode === 'menu') {
+      // Attract screen: a steady three-quarter view that follows the jet
+      // smoothly — no orbit, no jolt — so the game reads clearly on the menu.
+      this._desired.copy(p)
+        .addScaledVector(fwd, -21)
+        .addScaledVector(up, 6)
+        .addScaledVector(right, 12);
+      this.camera.position.lerp(this._desired, Math.min(1, (1 - Math.pow(0.0008, dt))));
+      this._look.copy(p).addScaledVector(fwd, 14);
       this._applyLook(this._up, dt);
     }
 

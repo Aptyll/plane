@@ -42,9 +42,9 @@ export class Game {
     // Synthetic input used to fly the jet on the attract/menu screen.
     this._demoInput = { steerX: 0, steerY: 0, throttle: 0, fire: false, missile: false, cameraNext: false };
 
-    // Spawn a cruising jet + cinematic camera so the menu is alive.
+    // Spawn a cruising jet + steady menu camera so the menu is alive but calm.
     this._spawnPlayer();
-    this.rig.setMode('cinematic');
+    this.rig.setMode('menu');
   }
 
   _spawnPlayer() {
@@ -226,13 +226,16 @@ export class Game {
     }
 
     if (!this.running) {
-      // Attract screen: gently fly the jet over the sea for a live backdrop.
+      // Attract screen: fly the jet straight and level over the sea for a calm,
+      // smooth backdrop — no circling, no jolting the camera.
       if (this.plane && this.plane.alive) {
         this.plane.crashEnabled = false; // never crash on the menu
-        this._demoInput.steerX = Math.sin(this._time * 0.35) * 0.35;
-        this._demoInput.steerY = Math.sin(this._time * 0.23) * 0.12;
-        this.plane.throttle = 0.7;
+        this._demoInput.steerX = 0;
+        this._demoInput.steerY = 0;
+        this.plane.throttle = 0.6;
         this.plane.update(dt, this._demoInput, this._time);
+        // Hold a steady cruise altitude so it glides level (no slow sink/climb).
+        this.plane.position.y += (200 - this.plane.position.y) * Math.min(1, dt * 0.6);
       }
       this.environment.update(dt, this.plane ? this.plane.position : new THREE.Vector3());
       this.fx.update(dt);
