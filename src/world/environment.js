@@ -100,56 +100,79 @@ export class Environment {
   }
 
   _buildClouds() {
-    // A handful of hand-painted cloud textures so the sky isn't repetitive,
-    // then two readable decks of cumulus for depth without clutter.
+    // A library of hand-painted cloud silhouettes so no two clouds look alike.
     this.cloudTextures = [];
-    for (let i = 0; i < 4; i++) this.cloudTextures.push(this._makeCloudTexture());
+    const variants = this.lowQuality ? 5 : 9;
+    for (let i = 0; i < variants; i++) this.cloudTextures.push(this._makeCloudTexture());
 
-    this._cloudWhite = new THREE.Color(0xffffff);
+    // One shared quad. Each cloud is a few of these crossed at fixed angles, so
+    // it reads as a solid puff from any side and — crucially — stays anchored in
+    // the world. No billboarding, so the sky no longer rotates with the camera.
+    this._cloudGeo = new THREE.PlaneGeometry(1, 1);
 
-    // Lower fair-weather deck: large, opaque, the main sense of altitude.
+    // Lower fair-weather deck: large and mostly white — the main sense of scale.
     this._spawnCloudLayer({
-      count: this.lowQuality ? 14 : 20,
-      minR: 1500, maxR: 6500,
-      minH: 360, maxH: 720,
-      minScale: 750, maxScale: 1500,
-      flatten: 0.42, opacity: 0.96,
+      count: this.lowQuality ? 16 : 24,
+      minR: 1500, maxR: 6500, minH: 340, maxH: 760,
+      minScale: 700, maxScale: 1700, flatten: 0.4,
+      opacity: 0.96, grayChance: 0.3,
     });
-    // Sparse higher deck: bigger and softer, reads as distant towers.
+    // Higher deck: bigger, softer and a touch greyer — distant towers for depth.
     this._spawnCloudLayer({
-      count: this.lowQuality ? 7 : 11,
-      minR: 2800, maxR: 7000,
-      minH: 1150, maxH: 1750,
-      minScale: 1000, maxScale: 2000,
-      flatten: 0.36, opacity: 0.82,
+      count: this.lowQuality ? 8 : 13,
+      minR: 2600, maxR: 7200, minH: 1150, maxH: 1850,
+      minScale: 950, maxScale: 2300, flatten: 0.34,
+      opacity: 0.84, grayChance: 0.55,
     });
   }
 
   _spawnCloudLayer(o) {
+    const planes = this.lowQuality ? 2 : 3;
     for (let i = 0; i < o.count; i++) {
       const tex = this.cloudTextures[(Math.random() * this.cloudTextures.length) | 0];
-      const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      const mat = new THREE.MeshBasicMaterial({
         map: tex,
         transparent: true,
         depthWrite: false,
-        color: 0xffffff,
-        fog: false, // we apply our own aerial perspective per cloud
-      }));
+        fog: false,            // we apply our own aerial perspective per cloud
+        side: THREE.DoubleSide,
+      });
+
+      // Colour variety: mostly white, some light grey, a few moody storm-greys.
+      let v;
+      const roll = Math.random();
+      if (roll > o.grayChance) v = 0.95 + Math.random() * 0.05;            // white
+      else if (roll > o.grayChance * 0.35) v = 0.78 + Math.random() * 0.12; // light grey
+      else v = 0.6 + Math.random() * 0.15;                                  // storm grey
+      const baseColor = new THREE.Color().setHSL(0.6, (1 - v) * 0.28, v);
+
+      // Crossed quads at fixed local angles => volume from every direction.
+      const group = new THREE.Group();
+      for (let k = 0; k < planes; k++) {
+        const m = new THREE.Mesh(this._cloudGeo, mat);
+        m.rotation.y = (k / planes) * Math.PI;
+        group.add(m);
+      }
+      const w = o.minScale + Math.random() * (o.maxScale - o.minScale);
+      const h = w * (o.flatten + Math.random() * 0.16);
+      group.scale.set(w, h, w); // x === z keeps the crossed planes shear-free
+
       const r = o.minR + Math.random() * (o.maxR - o.minR);
       const a = Math.random() * Math.PI * 2;
-      const h = o.minH + Math.random() * (o.maxH - o.minH);
-      spr.position.set(Math.cos(a) * r, h, Math.sin(a) * r);
-      const sc = o.minScale + Math.random() * (o.maxScale - o.minScale);
-      spr.scale.set(sc, sc * (o.flatten + Math.random() * 0.14), 1);
-      spr.userData.baseOpacity = o.opacity;
-      this.scene.add(spr);
-      this.clouds.push(spr);
+      const hY = o.minH + Math.random() * (o.maxH - o.minH);
+      group.position.set(Math.cos(a) * r, hY, Math.sin(a) * r);
+      group.rotation.y = Math.random() * Math.PI * 2; // fixed, world-anchored
+
+      group.userData = { mat, baseColor, baseOpacity: o.opacity };
+      this.scene.add(group);
+      this.clouds.push(group);
     }
   }
 
-  // A single, clean cumulus cloud painted onto a canvas: a solid white body
-  // with a soft silhouette (no internal noise), a cool shadow on the underside
-  // and a warm sun-side highlight — i.e. hand-painted volume, not blobby mush.
+  // A single, clean cumulus painted onto a canvas: a solid white body with a
+  // soft silhouette (no internal noise), a cool shadow on the underside and a
+  // warm sun-side highlight. Profile is randomised so silhouettes vary from
+  // tall billowing towers to wide flat banks.
   _makeCloudTexture() {
     const size = 512;
     const c = document.createElement('canvas');
@@ -167,32 +190,37 @@ export class Environment {
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     };
 
+    const arch = 0.1 + Math.random() * 0.18;          // how tall the billows rise
+    const halfW = size * (0.16 + Math.random() * 0.14); // narrow tower .. wide bank
+    const lump = 0.6 + Math.random() * 0.8;           // edge raggedness
     const cx = size * 0.5;
-    const baseY = size * 0.64;              // flattish underside
-    const lobes = 6 + (Math.random() * 3 | 0);
+    const baseY = size * 0.62;                         // flattish underside
+    const lobes = 5 + (Math.random() * 5 | 0);
     for (let i = 0; i < lobes; i++) {
       const t = i / (lobes - 1);
-      const arch = Math.sin(t * Math.PI);   // billows highest in the middle
-      const x = size * (0.18 + 0.64 * t) + (Math.random() - 0.5) * size * 0.05;
-      const y = baseY - size * (0.05 + 0.26 * arch) - Math.random() * size * 0.04;
-      const r = size * (0.085 + 0.085 * arch + Math.random() * 0.03);
+      const a = Math.sin(t * Math.PI);                // billows highest in middle
+      const x = cx + (t - 0.5) * 2 * halfW + (Math.random() - 0.5) * size * 0.05 * lump;
+      const y = baseY - size * (0.04 + arch * a) - Math.random() * size * 0.05 * lump;
+      const r = size * (0.06 + 0.06 * a + Math.random() * 0.03);
       disc(x, y, r);
     }
     // Thicken and round off the base.
-    disc(cx - size * 0.2, baseY - size * 0.03, size * 0.12);
-    disc(cx + size * 0.18, baseY - size * 0.04, size * 0.12);
+    disc(cx - halfW * 0.5, baseY - size * 0.03, size * 0.11);
+    disc(cx + halfW * 0.5, baseY - size * 0.04, size * 0.11);
+    disc(cx, baseY - size * 0.02, size * 0.12);
 
     // Cool shadow on the underside — only inside the cloud (source-atop).
     ctx.globalCompositeOperation = 'source-atop';
-    const shade = ctx.createLinearGradient(0, size * 0.33, 0, size * 0.74);
+    const shade = ctx.createLinearGradient(0, size * (0.3 + Math.random() * 0.08), 0, size * 0.78);
     shade.addColorStop(0, 'rgba(205,221,239,0)');
-    shade.addColorStop(1, 'rgba(150,172,200,0.5)');
+    shade.addColorStop(1, `rgba(150,172,200,${(0.42 + Math.random() * 0.22).toFixed(3)})`);
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, size, size);
 
     // Warm sun-side highlight on the upper lobes.
-    const hi = ctx.createRadialGradient(size * 0.42, size * 0.3, 0, size * 0.42, size * 0.3, size * 0.5);
-    hi.addColorStop(0, 'rgba(255,251,242,0.55)');
+    const hx = size * (0.36 + Math.random() * 0.18);
+    const hi = ctx.createRadialGradient(hx, size * 0.28, 0, hx, size * 0.28, size * 0.5);
+    hi.addColorStop(0, 'rgba(255,251,242,0.5)');
     hi.addColorStop(1, 'rgba(255,251,242,0)');
     ctx.fillStyle = hi;
     ctx.fillRect(0, 0, size, size);
@@ -229,6 +257,8 @@ export class Environment {
     }
     // Drift clouds slowly and apply aerial perspective: distant clouds fade and
     // cool toward the horizon haze, which gives the sky readable depth layers.
+    // The clouds are fixed world geometry, so this never reorients them — the
+    // sky stays put as the camera banks and orbits.
     for (const c of this.clouds) {
       c.position.x += dt * 3.5;
       if (c.position.x - playerPos.x > 8000) c.position.x -= 16000;
@@ -236,9 +266,10 @@ export class Environment {
       const dz = c.position.z - playerPos.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       const f = THREE.MathUtils.clamp((dist - 3500) / 7000, 0, 1);
-      c.material.opacity = c.userData.baseOpacity * (1 - 0.6 * f);
-      _tint.copy(this._cloudWhite).lerp(this.fogColor, 0.6 * f);
-      c.material.color.copy(_tint);
+      const u = c.userData;
+      u.mat.opacity = u.baseOpacity * (1 - 0.6 * f);
+      _tint.copy(u.baseColor).lerp(this.fogColor, 0.6 * f);
+      u.mat.color.copy(_tint);
     }
   }
 }

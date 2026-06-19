@@ -8,7 +8,7 @@ import { Input } from './systems/input.js';
 import { Game } from './game.js';
 
 // Patch version shown on the main menu. Bump by 0.1 on every push to main.
-const PATCH_VERSION = '1.0';
+const PATCH_VERSION = '1.1';
 
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
