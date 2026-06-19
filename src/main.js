@@ -14,7 +14,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.92;
+renderer.toneMappingExposure = 0.78;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -26,11 +26,12 @@ const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerH
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
+// Kept subtle so bright sky/sea can't bleed over the aircraft and hurt clarity.
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.55,  // strength
-  0.7,   // radius
-  0.85   // threshold
+  0.22,  // strength
+  0.5,   // radius
+  0.95   // threshold — only very bright sources (afterburner, tracers, sun) bloom
 );
 composer.addPass(bloom);
 composer.addPass(new OutputPass());

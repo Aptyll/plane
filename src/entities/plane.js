@@ -15,7 +15,8 @@ export class Plane {
     this.projectiles = projectiles;
     this.fx = fx;
 
-    this.group = buildJet({ body: 0xd7dde3, accent: 0x2c3742, cockpit: 0x0e1c28 });
+    // Cool steel body with dark accents reads cleanly in the chase camera.
+    this.group = buildJet({ body: 0xaab4c0, accent: 0x27313c, cockpit: 0x0e1c28 });
     this.group.position.set(0, 160, 0);
     scene.add(this.group);
 

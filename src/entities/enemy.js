@@ -12,7 +12,9 @@ export class Enemy {
     this.projectiles = projectiles;
     this.fx = fx;
 
-    this.group = buildJet({ body: 0x6b3030, accent: 0x301414, cockpit: 0x1a0a0a, emissive: 0x140000 });
+    // Bright, saturated red with a faint emissive base so enemies stay clearly
+    // visible against both the blue sky and the dark sea.
+    this.group = buildJet({ body: 0xe23b2f, accent: 0x8a1a14, cockpit: 0x2a0c0a, emissive: 0x5a1410 });
     this.group.position.copy(pos);
     scene.add(this.group);
 

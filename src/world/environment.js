@@ -21,7 +21,7 @@ export class Environment {
 
   _buildLights() {
     // Warm key (sun) + cool sky fill for nice form definition.
-    this.sunLight = new THREE.DirectionalLight(0xfff0d8, 3.0);
+    this.sunLight = new THREE.DirectionalLight(0xfff0d8, 1.9);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(this.lowQuality ? 1024 : 2048, this.lowQuality ? 1024 : 2048);
     this.sunLight.shadow.camera.near = 1;
@@ -35,10 +35,10 @@ export class Environment {
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
-    this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x33506b, 1.1);
+    this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x33506b, 0.7);
     this.scene.add(this.hemi);
 
-    this.ambient = new THREE.AmbientLight(0x405d7a, 0.5);
+    this.ambient = new THREE.AmbientLight(0x405d7a, 0.4);
     this.scene.add(this.ambient);
   }
 
