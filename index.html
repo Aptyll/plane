@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a1830" />
+  <title>SKYBREAKER — Aerial Combat</title>
+  <link rel="stylesheet" href="src/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Loading screen -->
+  <div id="loader">
+    <div class="loader-inner">
+      <h1 class="logo">SKYBREAKER</h1>
+      <p class="tagline">Aerial Combat</p>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <p id="loader-status">Spooling engines…</p>
+    </div>
+  </div>
+
+  <!-- Start / menu screen -->
+  <div id="menu" class="hidden">
+    <div class="menu-inner">
+      <h1 class="logo">SKYBREAKER</h1>
+      <p class="tagline">Defend the skies over open water.</p>
+      <button id="start-btn" class="btn-primary">ENGAGE</button>
+      <div class="controls-hint">
+        <p><strong>Left stick</strong> — Steer &nbsp;·&nbsp; <strong>Right buttons</strong> — Throttle / Fire / Camera</p>
+        <p class="muted">Gamepad &amp; keyboard (WASD / Space / C) also supported</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="hud-stat"><span class="label">SCORE</span><span id="hud-score">0</span></div>
+      <div class="hud-stat center"><span class="label">WAVE</span><span id="hud-wave">1</span></div>
+      <div class="hud-stat right"><span class="label">ENEMIES</span><span id="hud-enemies">0</span></div>
+    </div>
+
+    <div class="hud-left">
+      <div class="gauge">
+        <span class="label">HP</span>
+        <div class="gauge-bar"><div id="hp-fill" class="gauge-fill hp"></div></div>
+      </div>
+      <div class="gauge">
+        <span class="label">THR</span>
+        <div class="gauge-bar"><div id="thr-fill" class="gauge-fill thr"></div></div>
+      </div>
+      <div class="readout"><span id="hud-speed">0</span> <span class="unit">KTS</span></div>
+      <div class="readout"><span id="hud-alt">0</span> <span class="unit">ALT</span></div>
+    </div>
+
+    <!-- Crosshair / target reticle -->
+    <div id="reticle">
+      <div class="reticle-ring"></div>
+      <div class="reticle-dot"></div>
+    </div>
+    <div id="lead-marker" class="hidden"></div>
+
+    <!-- Off-screen target arrow -->
+    <div id="target-arrow" class="hidden">◄</div>
+
+    <div id="hitflash"></div>
+    <div id="damage-vignette"></div>
+
+    <div id="killfeed"></div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touch-ui" class="hidden">
+    <div id="stick-zone" class="stick-zone">
+      <div id="stick-base" class="stick-base">
+        <div id="stick-knob" class="stick-knob"></div>
+      </div>
+    </div>
+
+    <div class="btn-cluster">
+      <button id="btn-throttle-up" class="touch-btn small">▲<span>THR</span></button>
+      <button id="btn-throttle-down" class="touch-btn small">▼</button>
+      <button id="btn-cam" class="touch-btn small">CAM</button>
+      <button id="btn-missile" class="touch-btn med">MSL</button>
+      <button id="btn-fire" class="touch-btn big">FIRE</button>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="gameover" class="hidden">
+    <div class="menu-inner">
+      <h1 class="logo gameover-title">SHOT DOWN</h1>
+      <p class="tagline">Final score: <span id="final-score">0</span> · Wave <span id="final-wave">1</span></p>
+      <button id="restart-btn" class="btn-primary">FLY AGAIN</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
