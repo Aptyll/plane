@@ -1,29 +1,38 @@
 import * as THREE from 'three';
 import { buildJet, LIVERY } from '../entities/jetModel.js';
 
-// Rocket-League-style instant replay. While playing we record a short rolling
-// buffer of every aircraft's transform; on the player's death we play the last
-// few seconds back in slow motion with a cinematic orbit framing the player and
-// whatever killed them, so fast deaths are easy to read.
-const _center = new THREE.Vector3();
+// Rocket-League-style instant replay.
+//
+// While playing we record a short rolling buffer of every aircraft's transform.
+// On death we replay the last ~2s in slow motion from ONE deliberately composed
+// camera angle (not a spin): a 3/4 "kill-cam" placed behind-and-above the
+// victim, on the side the attack came from, so you clearly see your jet, the
+// attacker, and the impact. The vantage is computed once from the real kill
+// geometry (who/what actually hit you) and then tracks the victim so the framing
+// stays stable and readable.
+const UP = new THREE.Vector3(0, 1, 0);
 const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
+const _side = new THREE.Vector3();
+const _line = new THREE.Vector3();
+const _sample = new THREE.Vector3();
 
 export class Replay {
   constructor(scene, fx) {
     this.scene = scene;
     this.fx = fx;
     this.frames = [];
-    this.window = 2.8;  // seconds of footage before the death
-    this.slow = 0.45;   // playback speed (slow motion)
-    this.tail = 1.2;    // seconds of aftermath after the death moment
+    this.window = 1.8;  // seconds of footage before the death
+    this.slow = 0.5;    // playback speed (slow motion)
+    this.tail = 1.2;    // seconds of aftermath after the impact
     this.active = false;
     this.focus = new THREE.Vector3();
     this.ghosts = new Map();
-    this._camPos = new THREE.Vector3();
+
+    this._camOffset = new THREE.Vector3();
+    this._desiredCam = new THREE.Vector3();
   }
 
-  // Called every gameplay frame.
   record(t, player, enemies) {
     const actors = [];
     if (player.alive) actors.push(this._snap('P', 'blue', player.group));
@@ -41,17 +50,14 @@ export class Replay {
     };
   }
 
-  begin(deathTime, deathPos, killerId) {
+  begin(deathTime, deathPos, threat) {
     this.deathTime = deathTime;
     this.deathPos = deathPos.clone();
-    this.killerId = killerId;
     this.playTime = deathTime - this.window;
     this.explosionFired = false;
-    this.azimuth = Math.random() * Math.PI * 2;
-    this.focus.copy(deathPos);
-    this._camInit = false;
+    this._started = false;
 
-    // Window the buffer and build per-frame lookup maps + ghost meshes.
+    // Window the buffer; build per-frame lookup maps + ghost meshes.
     this._frames = this.frames.filter((f) => f.t >= this.playTime - 0.05);
     this.ghosts.clear();
     for (const f of this._frames) {
@@ -67,7 +73,62 @@ export class Replay {
       }
     }
     this.active = this._frames.length > 0;
-    return this.active;
+    if (!this.active) return false;
+
+    // The attacker we want in frame, taken from the REAL kill (if recorded).
+    this.killerId = (threat && threat.sourceId && this.ghosts.has(threat.sourceId)) ? threat.sourceId : null;
+
+    this._composeShot(threat);
+    this.focus.copy(deathPos);
+    return true;
+  }
+
+  // Compute a single, stable cinematic vantage from the kill geometry.
+  _composeShot(threat) {
+    // Victim heading at death (for fallbacks and so motion reads across screen).
+    const vel = this._actorVelocity('P');
+
+    // Direction from the victim toward whatever killed it ("line of action").
+    const type = threat && threat.type;
+    if (this.killerId) {
+      const kp = this._actorAt(this.killerId, this.deathTime);
+      if (kp) _line.copy(kp).sub(this.deathPos);
+    } else if (type === 'sea') {
+      _line.set(0, -1, 0); // the sea is below
+    } else if (type === 'gun' && threat.dir) {
+      _line.copy(threat.dir).negate(); // a bullet travels toward us; the shooter is opposite
+    } else if (threat && threat.dir) {
+      _line.copy(threat.dir);
+    } else {
+      _line.copy(vel).negate();
+    }
+    if (_line.lengthSq() < 1e-4) _line.copy(vel).negate();
+    _line.normalize();
+    this._lineDir = _line.clone();
+
+    // Side axis: horizontal, perpendicular to the line of action. If the action
+    // is near-vertical (e.g. diving into the sea) fall back to the victim's path.
+    _side.crossVectors(UP, _line);
+    if (_side.lengthSq() < 0.05) _side.crossVectors(UP, vel);
+    if (_side.lengthSq() < 0.05) _side.set(1, 0, 0);
+    _side.normalize();
+
+    // Distance: close enough that the victim is large, scaled a little by how
+    // far the attacker is so both can fit, but firmly capped.
+    let killerDist = 0;
+    if (this.killerId) {
+      const kp = this._actorAt(this.killerId, this.deathTime);
+      if (kp) killerDist = kp.distanceTo(this.deathPos);
+    }
+    const dist = THREE.MathUtils.clamp(killerDist * 0.5 + 30, 38, 78);
+    this._dist = dist;
+
+    // 3/4 kill-cam: behind the victim relative to the attacker (-line), off to
+    // one side, and above. Looking at the victim, the attacker sits beyond it,
+    // clearly in frame, with the impact happening centre-screen.
+    this._camOffset.copy(UP).multiplyScalar(dist * 0.42)
+      .addScaledVector(_side, dist * 0.5)
+      .addScaledVector(_line, -dist * 0.72);
   }
 
   update(dt, camera) {
@@ -82,7 +143,7 @@ export class Replay {
     const span = (fb.t - fa.t) || 1;
     const alpha = THREE.MathUtils.clamp((this.playTime - fa.t) / span, 0, 1);
 
-    let playerPos = null, killerPos = null;
+    let victimPos = null;
     for (const [id, mesh] of this.ghosts) {
       const a = fa._map.get(id);
       const b = fb._map.get(id);
@@ -97,36 +158,27 @@ export class Replay {
       _qa.slerp(_qb, alpha);
       mesh.quaternion.copy(_qa);
       mesh.visible = true;
-      if (id === 'P') playerPos = mesh.position;
-      if (id === this.killerId) killerPos = mesh.position;
+      if (id === 'P') victimPos = mesh.position;
     }
 
-    // Framing: keep player + killer both in shot, else center on the player.
-    let sep = 38;
-    if (playerPos && killerPos) {
-      _center.copy(playerPos).add(killerPos).multiplyScalar(0.5);
-      sep = playerPos.distanceTo(killerPos);
-    } else if (playerPos) {
-      _center.copy(playerPos);
-    } else {
-      _center.copy(this.deathPos);
-    }
-    this.focus.lerp(_center, Math.min(1, dt * 2.5));
+    // Track the victim (then hold on the impact point once it's gone).
+    const subject = victimPos || this.deathPos;
+    if (!this._started) { this.focus.copy(subject); this._started = true; }
+    else this.focus.lerp(subject, Math.min(1, dt * 6));
 
-    const dist = THREE.MathUtils.clamp(sep * 1.15 + 32, 44, 130);
-    this.azimuth += dt * 0.4;
-    this._camPos.set(
-      this.focus.x + Math.cos(this.azimuth) * dist,
-      this.focus.y + dist * 0.4 + 12,
-      this.focus.z + Math.sin(this.azimuth) * dist);
-    if (!this._camInit) { camera.position.copy(this._camPos); this._camInit = true; }
-    else camera.position.lerp(this._camPos, Math.min(1, dt * 2.5));
+    // Stable vantage that dollies in slightly toward the impact.
+    const progress = THREE.MathUtils.clamp(
+      (this.playTime - (this.deathTime - this.window)) / this.window, 0, 1);
+    const zoom = THREE.MathUtils.lerp(1.06, 0.86, progress);
+    this._desiredCam.copy(this.focus).addScaledVector(this._camOffset, zoom);
+    if (camera.position.distanceTo(this._desiredCam) > 200) camera.position.copy(this._desiredCam);
+    else camera.position.lerp(this._desiredCam, Math.min(1, dt * 5));
     camera.up.set(0, 1, 0);
     camera.lookAt(this.focus);
-    camera.fov += (52 - camera.fov) * Math.min(1, dt * 3);
+    camera.fov += (50 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
 
-    // Re-stage the killing explosion at the right moment.
+    // Re-stage the killing blow at the exact moment.
     if (!this.explosionFired && this.playTime >= this.deathTime) {
       this.fx.explosion(this.deathPos, { size: 13, color: 0xffae42 });
       this.explosionFired = true;
@@ -134,6 +186,35 @@ export class Replay {
 
     if (this.playTime >= this.deathTime + this.tail) { this.cleanup(); return true; }
     return false;
+  }
+
+  // ---- buffer sampling helpers ----
+  _actorAt(id, t) {
+    // Nearest recorded sample of an actor at/around time t (scans from the end).
+    for (let k = this._frames.length - 1; k >= 0; k--) {
+      const a = this._frames[k]._map.get(id);
+      if (a && this._frames[k].t <= t + 1e-3) return _sample.set(a.px, a.py, a.pz);
+    }
+    // Otherwise the earliest sample we have.
+    for (let k = 0; k < this._frames.length; k++) {
+      const a = this._frames[k]._map.get(id);
+      if (a) return _sample.set(a.px, a.py, a.pz);
+    }
+    return null;
+  }
+
+  _actorVelocity(id) {
+    // Velocity from the last two recorded samples of an actor.
+    const got = [];
+    for (let k = this._frames.length - 1; k >= 0 && got.length < 2; k--) {
+      const a = this._frames[k]._map.get(id);
+      if (a) got.push({ p: new THREE.Vector3(a.px, a.py, a.pz), t: this._frames[k].t });
+    }
+    if (got.length === 2) {
+      const v = got[0].p.sub(got[1].p);
+      if (v.lengthSq() > 1e-5) return v.normalize();
+    }
+    return new THREE.Vector3(0, 0, 1);
   }
 
   cleanup() {

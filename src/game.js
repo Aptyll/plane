@@ -124,14 +124,6 @@ export class Game {
   }
 
   _startReplay() {
-    // Identify the likely killer: nearest surviving enemy to the death point.
-    let killerId = null, best = Infinity;
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      const d = e.group.position.distanceToSquared(this._deathPos);
-      if (d < best) { best = d; killerId = 'E' + e.group.id; }
-    }
-
     // Clear transient live FX/projectiles and hide the live aircraft so only
     // the replay ghosts are shown.
     this.fx.clear();
@@ -142,7 +134,8 @@ export class Game {
     this.plane.group.visible = false;
     for (const e of this.enemies) e.group.visible = false;
 
-    const ok = this.replay.begin(this._deathTime, this._deathPos, killerId);
+    // Use the real recorded threat (shooter / collided plane / sea) to frame it.
+    const ok = this.replay.begin(this._deathTime, this._deathPos, this.plane.lastThreat);
     if (!ok) { this._finishReplay(); return; }
     this.replaying = true;
     if (this.onReplayStart) this.onReplayStart();
@@ -189,8 +182,8 @@ export class Game {
         const r = p.radius + e.radius;
         if (p.group.position.distanceToSquared(e.group.position) < r * r) {
           const mid = this._tmp.copy(p.group.position).lerp(e.group.position, 0.5);
+          p.collide(mid, e); // record the threat before the enemy is removed
           e.die();
-          p.collide(mid);
           if (this.rig) this.rig.addShake(0.9);
           break;
         }

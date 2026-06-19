@@ -133,7 +133,7 @@ export class Enemy {
     this.burstLeft--;
     this.fireCooldown = this.burstLeft > 0 ? this.fireRate : this.fireRate + 0.9;
     const muzzle = this.group.position.clone().addScaledVector(this._dir, 5);
-    this.projectiles.spawnBullet(muzzle, this._dir.clone(), 'enemy', 360, 7);
+    this.projectiles.spawnBullet(muzzle, this._dir.clone(), 'enemy', 360, 7, 'E' + this.group.id);
   }
 
   takeDamage(amount, hitPos) {

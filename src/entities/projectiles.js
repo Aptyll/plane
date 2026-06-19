@@ -21,13 +21,13 @@ export class ProjectileManager {
     this._missileMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.6, roughness: 0.4 });
   }
 
-  spawnBullet(pos, dir, faction, speed = 520, damage = 9) {
+  spawnBullet(pos, dir, faction, speed = 520, damage = 9, sourceId = null) {
     const mat = faction === 'player' ? this._playerTracerMat : this._enemyTracerMat;
     const m = new THREE.Mesh(this._tracerGeo, mat);
     m.position.copy(pos);
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
     this.scene.add(m);
-    this.bullets.push({ mesh: m, vel: dir.clone().normalize().multiplyScalar(speed), life: 2.2, faction, damage });
+    this.bullets.push({ mesh: m, vel: dir.clone().normalize().multiplyScalar(speed), life: 2.2, faction, damage, sourceId });
   }
 
   spawnMissile(pos, dir, faction, target) {
@@ -66,7 +66,12 @@ export class ProjectileManager {
         }
       } else if (player && player.alive) {
         if (b.mesh.position.distanceToSquared(player.group.position) < player.radius * player.radius) {
-          player.takeDamage(b.damage);
+          player.takeDamage(b.damage, {
+            type: 'gun',
+            pos: b.mesh.position.clone(),
+            dir: b.vel.clone().normalize(),
+            sourceId: b.sourceId,
+          });
           hit = true;
         }
       }

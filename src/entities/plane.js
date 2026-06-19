@@ -51,6 +51,7 @@ export class Plane {
     this._tmp = new THREE.Vector3();
     this._dir = new THREE.Vector3();
     this.lastHitTime = -10;
+    this.lastThreat = null; // {type, sourceId, pos, dir} of whatever last hit us
   }
 
   get position() { return this.group.position; }
@@ -159,14 +160,21 @@ export class Plane {
     if (!this.alive) return;
     this.group.position.y = 1;
     this.fx.explosion(this.group.position.clone(), { size: 9, color: 0x9fd8ff }); // water plume
+    this.lastThreat = { type: 'sea', sourceId: null, pos: this.group.position.clone(), dir: new THREE.Vector3(0, -1, 0) };
     this._die();
   }
 
   // Catastrophic mid-air collision with another aircraft.
-  collide(point) {
+  collide(point, enemy) {
     if (!this.alive) return;
     if (point) this.fx.explosion(point, { size: 14, color: 0xffae42 });
-    this.takeDamage(this.maxHp * 2);
+    const threat = enemy ? {
+      type: 'collision',
+      sourceId: 'E' + enemy.group.id,
+      pos: enemy.group.position.clone(),
+      dir: this.group.position.clone().sub(enemy.group.position).normalize(),
+    } : null;
+    this.takeDamage(this.maxHp * 2, threat);
   }
 
   _tickWeapons(dt) {
@@ -201,10 +209,11 @@ export class Plane {
     this.projectiles.spawnMissile(muzzle, this._dir.clone(), 'player', target);
   }
 
-  takeDamage(amount) {
+  takeDamage(amount, threat) {
     if (!this.alive) return;
     this.hp -= amount;
     this.lastHitTime = performance.now() / 1000;
+    if (threat) this.lastThreat = threat; // remembered for the death replay
     if (this.hp <= 0) { this.hp = 0; this._die(); }
   }
 
