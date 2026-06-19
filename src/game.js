@@ -171,5 +171,6 @@ export class Game {
       alt: this.plane.position.y,
     });
     this.hud.updateTarget(this.currentTarget, this.camera, w, h);
+    this.hud.updateRadar(this.plane, this.enemies, this.currentTarget, this._time);
   }
 }

@@ -129,9 +129,34 @@ html, body {
   transition: opacity 0.25s ease;
 }
 
+/* ---------- Radar ---------- */
+#radar-wrap {
+  position: absolute;
+  top: max(52px, calc(env(safe-area-inset-top) + 42px));
+  right: max(18px, env(safe-area-inset-right));
+  width: 148px; height: 148px;
+}
+#radar {
+  width: 100%; height: 100%; display: block;
+  border-radius: 50%;
+  border: 1.5px solid rgba(79,209,255,0.5);
+  box-shadow: 0 0 18px rgba(79,209,255,0.25), inset 0 0 24px rgba(0,0,0,0.4);
+  background: rgba(4,18,31,0.35);
+}
+.radar-label {
+  position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  font-size: 0.55rem; letter-spacing: 0.25em; color: var(--accent);
+  text-shadow: 0 0 6px rgba(0,0,0,0.7); opacity: 0.85;
+}
+
 #killfeed {
-  position: absolute; right: max(18px, env(safe-area-inset-right)); top: 70px;
+  position: absolute; right: max(18px, env(safe-area-inset-right)); top: 212px;
   display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+}
+
+@media (max-width: 520px) {
+  #radar-wrap { width: 112px; height: 112px; }
+  #killfeed { top: 176px; }
 }
 .kill-msg {
   background: rgba(8,24,40,0.7); border: 1px solid rgba(79,209,255,0.35);

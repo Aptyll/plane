@@ -21,6 +21,99 @@ export class HUD {
     };
     this._lastHp = 100;
     this._v = new THREE.Vector3();
+
+    // Radar
+    this.radar = document.getElementById('radar');
+    this.radarCtx = this.radar ? this.radar.getContext('2d') : null;
+    this.radarRange = 1000; // world units mapped to radar edge
+    this._fwd = new THREE.Vector3();
+  }
+
+  // Top-down radar, nose-up: forward = up, enemies as blips, target highlighted.
+  updateRadar(player, enemies, target, time) {
+    const ctx = this.radarCtx;
+    if (!ctx || !player) return;
+    const W = this.radar.width, H = this.radar.height;
+    const cx = W / 2, cy = H / 2;
+    const R = W / 2 - 8;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+
+    // Backdrop wash
+    ctx.fillStyle = 'rgba(6,20,34,0.55)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Range rings + crosshair
+    ctx.strokeStyle = 'rgba(79,209,255,0.22)';
+    ctx.lineWidth = 1;
+    for (const f of [0.34, 0.67, 1]) { ctx.beginPath(); ctx.arc(cx, cy, R * f, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+    ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+    ctx.stroke();
+
+    // Rotating sweep
+    const sweep = (time % 3) / 3 * Math.PI * 2;
+    const grad = ctx.createConicGradient ? ctx.createConicGradient(sweep, cx, cy) : null;
+    if (grad) {
+      grad.addColorStop(0.0, 'rgba(79,209,255,0.35)');
+      grad.addColorStop(0.08, 'rgba(79,209,255,0.0)');
+      grad.addColorStop(1.0, 'rgba(79,209,255,0.0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(110,225,255,0.6)';
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sweep - Math.PI / 2) * R, cy + Math.sin(sweep - Math.PI / 2) * R);
+    ctx.stroke();
+
+    // Player heading in XZ for nose-up orientation
+    player.forward(this._fwd);
+    let fx = this._fwd.x, fz = this._fwd.z;
+    const flen = Math.hypot(fx, fz) || 1;
+    fx /= flen; fz /= flen;
+
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      const dx = e.group.position.x - player.position.x;
+      const dz = e.group.position.z - player.position.z;
+      const relF = dx * fx + dz * fz;      // along forward
+      const relR = dx * fz - dz * fx;      // along right
+      let bx = (relR / this.radarRange) * R;
+      let by = -(relF / this.radarRange) * R;
+      const d = Math.hypot(bx, by);
+      let edge = false;
+      if (d > R) { const k = R / d; bx *= k; by *= k; edge = true; }
+      const px = cx + bx, py = cy + by;
+      const isTarget = e === target;
+
+      ctx.fillStyle = isTarget ? '#ffd24a' : '#ff5a4d';
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(px, py, edge ? 2 : (isTarget ? 4 : 3), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      if (isTarget && !edge) {
+        ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+
+    // Player marker (always nose-up at centre)
+    ctx.fillStyle = '#9bf0ff';
+    ctx.shadowColor = '#9bf0ff'; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 7);
+    ctx.lineTo(cx - 5, cy + 5);
+    ctx.lineTo(cx + 5, cy + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
   }
 
   setStats({ score, wave, enemies, hp, maxHp, throttle, speed, minSpeed, maxSpeed, alt }) {
