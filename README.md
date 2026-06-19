@@ -19,6 +19,10 @@ a high score. Designed mobile- and controller-first, with full keyboard support.
   Cinematic view. Cycle them live with the **CAM** button / `C` / gamepad **Y**.
 - **Mobile + controller first** — on-screen virtual joystick & buttons, full
   Gamepad API support, keyboard fallback. Adaptive quality on touch devices.
+- **Autopilot** — hand the jet to a competent AI pilot that flies lead-pursuit
+  gunnery, missile locks, energy-managed banking turns, sea/altitude safety, and
+  barrel-roll flair. Toggle in-game or start straight into spectator mode with
+  **WATCH AI** on the menu.
 
 ## Controls
 
@@ -29,6 +33,7 @@ a high score. Designed mobile- and controller-first, with full keyboard support.
 | Fire guns   | FIRE button        | A / RT             | Space               |
 | Missile     | MSL button         | B                  | F                   |
 | Switch cam  | CAM button         | Y                  | C                   |
+| Autopilot   | AUTOPILOT button   | X                  | P                   |
 
 Stick up = nose up, stick left/right = bank & turn.
 
@@ -65,6 +70,7 @@ src/
     projectiles.js      # bullets + homing missiles
   systems/
     input.js            # touch joystick + gamepad + keyboard
+    pilot.js            # autonomous AI pilot (autopilot)
     cameraRig.js        # multi-mode follow camera
     effects.js          # trails, afterburner, explosions
     hud.js              # DOM HUD, reticle, target markers

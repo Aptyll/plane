@@ -5,6 +5,7 @@ import { Trail, makeAfterburner, updateAfterburner } from '../systems/effects.js
 const FORWARD = new THREE.Vector3(0, 0, 1);
 const UP = new THREE.Vector3(0, 1, 0);
 const RIGHT = new THREE.Vector3(1, 0, 0);
+const _ORIGIN = new THREE.Vector3(0, 0, 0);
 
 // Player-controlled fighter with arcade flight physics, banked turns,
 // afterburner, wingtip contrails and gun/missile weapons.
@@ -25,6 +26,7 @@ export class Plane {
     this.speed = 80;
     this.alive = true;
     this.radius = 5;
+    this.autoTurnRate = 2.9; // how fast the autopilot can swing the nose around
 
     this.maxHp = 100;
     this.hp = this.maxHp;
@@ -103,13 +105,55 @@ export class Plane {
     if (this.group.position.y > 1500) this.group.position.y = 1500;
 
     // ----- Weapons -----
-    this.fireCooldown -= dt;
-    this.missileCooldown -= dt;
-    if (input.fire && this.fireCooldown <= 0) this._fireGun();
-    if (input.missile && this.missileCooldown <= 0) this._fireMissile();
+    this._tickWeapons(dt);
+    if (input.fire) this.tryFireGun();
+    if (input.missile) this.tryFireMissile();
 
     this._updateEffects(dt, time);
   }
+
+  // Autopilot flight: orient the jet directly toward a desired heading (with a
+  // commanded bank/roll for flair) and cruise. Used by the AI pilot so aiming
+  // is precise regardless of the arcade input model. Weapons are fired by the
+  // pilot via tryFireGun()/tryFireMissile().
+  autoFly(dt, desiredDir, bankAngle, throttleTarget, time) {
+    if (!this.alive) { this._updateEffects(dt, time); return; }
+
+    this.throttle = THREE.MathUtils.clamp(
+      THREE.MathUtils.lerp(this.throttle, throttleTarget, 1 - Math.pow(0.02, dt)), 0, 1);
+    const targetSpeed = THREE.MathUtils.lerp(this.minSpeed, this.maxSpeed, this.throttle);
+    this.speed = THREE.MathUtils.lerp(this.speed, targetSpeed, 1 - Math.pow(0.1, dt));
+
+    // Clamp pitch to avoid gimbal lock at the poles while still allowing steep climbs/dives.
+    const f = this._tmp.copy(desiredDir).normalize();
+    f.y = THREE.MathUtils.clamp(f.y, -0.85, 0.85);
+    f.normalize();
+
+    // Build a target orientation whose +Z points along f, rolled by bankAngle.
+    const up = UP.clone().applyAxisAngle(f, bankAngle);
+    const m = new THREE.Matrix4().lookAt(_ORIGIN, f.clone().negate(), up);
+    const targetQ = new THREE.Quaternion().setFromRotationMatrix(m);
+    this.group.quaternion.slerp(targetQ, Math.min(1, this.autoTurnRate * dt));
+    this.group.quaternion.normalize();
+
+    // Translate
+    this.forward(this._dir);
+    this.group.position.addScaledVector(this._dir, this.speed * dt);
+
+    if (this.group.position.y < 12) this.group.position.y = 12;
+    if (this.group.position.y > 1500) this.group.position.y = 1500;
+
+    this._tickWeapons(dt);
+    this._updateEffects(dt, time);
+  }
+
+  _tickWeapons(dt) {
+    this.fireCooldown -= dt;
+    this.missileCooldown -= dt;
+  }
+
+  tryFireGun() { if (this.fireCooldown <= 0) this._fireGun(); }
+  tryFireMissile() { if (this.missileCooldown <= 0) this._fireMissile(); }
 
   _fireGun() {
     this.fireCooldown = this.fireRate;

@@ -6,6 +6,7 @@ import { ProjectileManager } from './entities/projectiles.js';
 import { FXManager } from './systems/effects.js';
 import { CameraRig } from './systems/cameraRig.js';
 import { HUD } from './systems/hud.js';
+import { PilotAI } from './systems/pilot.js';
 
 export class Game {
   constructor(scene, camera, renderer, input) {
@@ -29,6 +30,9 @@ export class Game {
 
     this.onGameOver = null;
 
+    this.pilot = new PilotAI();
+    this.autopilot = false;
+
     // Synthetic input used to fly the jet on the attract/menu screen.
     this._demoInput = { steerX: 0, steerY: 0, throttle: 0, fire: false, missile: false, cameraNext: false };
 
@@ -51,6 +55,12 @@ export class Game {
     this.reset();
     this.rig.setMode('chase');
     this.running = true;
+  }
+
+  setAutopilot(on) {
+    this.autopilot = on;
+    this.pilot.reset();
+    this.hud.setAutopilot(on);
   }
 
   reset() {
@@ -138,13 +148,22 @@ export class Game {
 
     this.input.update();
     const st = this.input.state;
+    if (st.autopilotToggle) {
+      this.setAutopilot(!this.autopilot);
+      this.hud.kill(this.autopilot ? 'AUTOPILOT ENGAGED' : 'MANUAL CONTROL');
+    }
     if (st.cameraNext) {
       const label = this.rig.next();
       this.hud.kill('CAM: ' + label);
     }
 
-    this.plane.update(dt, st, this._time);
-    this._selectTarget();
+    if (this.autopilot) {
+      this.pilot.update(dt, this.plane, this.enemies, this._time);
+      this.currentTarget = this.pilot.target;
+    } else {
+      this.plane.update(dt, st, this._time);
+      this._selectTarget();
+    }
 
     for (const e of this.enemies) e.update(dt, this.plane, this._time);
     this.projectiles.update(dt, this.plane, this.enemies);

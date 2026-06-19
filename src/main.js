@@ -69,12 +69,13 @@ function showMenu() {
   gameover.classList.add('hidden');
 }
 
-function startGame() {
+function startGame(autoplay = false) {
   menu.classList.add('hidden');
   gameover.classList.add('hidden');
   hud.classList.remove('hidden');
   if (isTouch) touchUi.classList.remove('hidden');
   game.start();
+  game.setAutopilot(autoplay);
 }
 
 game.onGameOver = (score, wave) => {
@@ -87,8 +88,9 @@ game.onGameOver = (score, wave) => {
   }, 1400);
 };
 
-document.getElementById('start-btn').addEventListener('click', startGame);
-document.getElementById('restart-btn').addEventListener('click', startGame);
+document.getElementById('start-btn').addEventListener('click', () => startGame(false));
+document.getElementById('watch-btn').addEventListener('click', () => startGame(true));
+document.getElementById('restart-btn').addEventListener('click', () => startGame(game.autopilot));
 
 // ---------- Loading sequence ----------
 const steps = [

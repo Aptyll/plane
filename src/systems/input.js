@@ -10,10 +10,13 @@ export class Input {
       fire: false,
       missile: false, // edge-triggered (true for one frame)
       cameraNext: false, // edge-triggered
+      autopilotToggle: false, // edge-triggered
     };
 
     this._missileHeld = false;
     this._camHeld = false;
+    this._pHeld = false;
+    this._autoReq = false;
     this._keys = new Set();
     this._stick = { active: false, id: null, x: 0, y: 0 };
     this._btn = { fire: false, msl: false, thrUp: false, thrDown: false, cam: false };
@@ -99,6 +102,10 @@ export class Input {
     hold('btn-throttle-up', 'thrUp');
     hold('btn-throttle-down', 'thrDown');
     hold('btn-cam', 'cam');
+
+    // Autopilot is a click toggle (not a hold).
+    const ap = document.getElementById('btn-autopilot');
+    if (ap) ap.addEventListener('click', (e) => { e.preventDefault(); this._autoReq = true; });
   }
 
   // ---------- Gamepad ----------
@@ -122,6 +129,7 @@ export class Input {
     out.fire = (pad.buttons[0] && pad.buttons[0].pressed) || rt > 0.5; // A or RT
     out.msl = pad.buttons[1] && pad.buttons[1].pressed;  // B
     out.cam = pad.buttons[3] && pad.buttons[3].pressed;  // Y
+    out.auto = pad.buttons[2] && pad.buttons[2].pressed; // X
     return out;
   }
 
@@ -157,6 +165,10 @@ export class Input {
       if (gp.fire) fire = true;
       if (gp.msl) msl = true;
       if (gp.cam) cam = true;
+      if (gp.auto && !this._gpAutoHeld) this._autoReq = true;
+      this._gpAutoHeld = gp.auto;
+    } else {
+      this._gpAutoHeld = false;
     }
 
     this.state.steerX = Math.max(-1, Math.min(1, sx));
@@ -169,5 +181,12 @@ export class Input {
     this._missileHeld = msl;
     this.state.cameraNext = cam && !this._camHeld;
     this._camHeld = cam;
+
+    // Autopilot toggle: keyboard P (edge) or the on-screen button (click).
+    const pDown = k.has('KeyP');
+    const pEdge = pDown && !this._pHeld;
+    this._pHeld = pDown;
+    this.state.autopilotToggle = this._autoReq || pEdge;
+    this._autoReq = false;
   }
 }

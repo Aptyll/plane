@@ -18,6 +18,9 @@ export class HUD {
       hitflash: document.getElementById('hitflash'),
       killfeed: document.getElementById('killfeed'),
       reticle: document.getElementById('reticle'),
+      apBtn: document.getElementById('btn-autopilot'),
+      apState: document.getElementById('ap-state'),
+      apIndicator: document.getElementById('ap-indicator'),
     };
     this._lastHp = 100;
     this._v = new THREE.Vector3();
@@ -133,6 +136,14 @@ export class HUD {
     const dmg = 1 - hp / maxHp;
     if (dmg > 0.5) this.el.vignette.style.opacity = (dmg - 0.5) * 0.7;
     else this.el.vignette.style.opacity = 0;
+  }
+
+  setAutopilot(on) {
+    if (this.el.apBtn) this.el.apBtn.classList.toggle('on', on);
+    if (this.el.apState) this.el.apState.textContent = on ? 'ON' : 'OFF';
+    if (this.el.apIndicator) this.el.apIndicator.classList.toggle('hidden', !on);
+    // Dim the reticle while the AI flies, since the human isn't aiming.
+    if (this.el.reticle) this.el.reticle.style.opacity = on ? '0.4' : '1';
   }
 
   flashDamage() {
