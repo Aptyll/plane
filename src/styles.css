@@ -108,6 +108,25 @@ html, body {
 }
 @keyframes appulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 
+/* ---------- Instant replay ---------- */
+#replay-banner {
+  position: fixed; z-index: 40; left: 50%; transform: translateX(-50%);
+  top: max(20px, calc(env(safe-area-inset-top) + 14px));
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  pointer-events: none; text-align: center;
+}
+.rb-rec {
+  font-weight: 700; letter-spacing: 0.22em; font-size: 1rem; color: #ffd9d4;
+  text-shadow: 0 0 14px rgba(255,90,77,0.8);
+}
+.rb-rec::first-letter { color: var(--warn); }
+.rb-skip { font-size: 0.7rem; letter-spacing: 0.16em; color: #9dc4e0; opacity: 0.8; }
+#replay-banner::after {
+  content: ""; position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: -1;
+  box-shadow: inset 0 0 120px 30px rgba(0,0,0,0.55);
+  pointer-events: none;
+}
+
 /* ---------- HUD ---------- */
 #hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
 .hud-top {

@@ -20,6 +20,10 @@ a high score. Designed mobile- and controller-first, with full keyboard support.
   steers to avoid colliding with its squadron and the player.
 - **Multiple cameras** — Chase (default), Wide, Cockpit, and an orbiting
   Cinematic view. Cycle them live with the **CAM** button / `C` / gamepad **Y**.
+- **Warcraft team colours** — vivid blue player jet, vivid red enemies.
+- **Instant death replay** — Rocket-League-style slow-motion replay on death,
+  with a cinematic orbit that frames both your jet and your killer so fast
+  deaths are easy to read. Tap / any key to skip.
 - **Mobile + controller first** — on-screen virtual joystick & buttons, full
   Gamepad API support, keyboard fallback. Adaptive quality on touch devices.
 - **Autopilot** — hand the jet to a competent AI pilot that flies lead-pursuit
@@ -74,6 +78,7 @@ src/
   systems/
     input.js            # touch joystick + gamepad + keyboard
     pilot.js            # autonomous AI pilot (autopilot)
+    replay.js           # slow-motion death replay
     cameraRig.js        # multi-mode follow camera
     effects.js          # trails, afterburner, explosions
     hud.js              # DOM HUD, reticle, target markers

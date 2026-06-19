@@ -161,6 +161,15 @@ export class FXManager {
     this.explosions.push({ flash, flashMat, fire, fireMat, light, debris, dGeo, dMat, vel, smoke, smokeMat, t: 0, size });
   }
 
+  clear() {
+    for (const e of this.explosions) {
+      this.scene.remove(e.flash, e.fire, e.debris, e.smoke);
+      if (e.light) this.scene.remove(e.light);
+      e.flashMat.dispose(); e.fireMat.dispose(); e.dGeo.dispose(); e.dMat.dispose(); e.smokeMat.dispose();
+    }
+    this.explosions.length = 0;
+  }
+
   update(dt) {
     for (let i = this.explosions.length - 1; i >= 0; i--) {
       const e = this.explosions[i];

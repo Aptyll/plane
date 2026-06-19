@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 
+// Warcraft team colours: vivid blue for the player, vivid red for enemies.
+// Each gets a matching dark accent and a faint emissive so the jet stays
+// readable against any background.
+export const LIVERY = {
+  blue: { body: 0x0042ff, accent: 0x0a2a8c, cockpit: 0x0e1c28, emissive: 0x0a1f6e },
+  red:  { body: 0xff0303, accent: 0x8a0a0a, cockpit: 0x2a0c0a, emissive: 0x5a0a0a },
+};
+
 // Procedural stylized fighter jet built from primitives. Returns a Group whose
 // local +Z points "forward" (nose). Includes a marker for the afterburner.
 export function buildJet({

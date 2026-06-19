@@ -7,6 +7,7 @@ import { FXManager } from './systems/effects.js';
 import { CameraRig } from './systems/cameraRig.js';
 import { HUD } from './systems/hud.js';
 import { PilotAI } from './systems/pilot.js';
+import { Replay } from './systems/replay.js';
 
 export class Game {
   constructor(scene, camera, renderer, input) {
@@ -32,6 +33,11 @@ export class Game {
 
     this.pilot = new PilotAI();
     this.autopilot = false;
+
+    this.replay = new Replay(this.scene, this.fx);
+    this.replaying = false;
+    this._pendingDeath = false;
+    this.onReplayStart = null;
 
     // Synthetic input used to fly the jet on the attract/menu screen.
     this._demoInput = { steerX: 0, steerY: 0, throttle: 0, fire: false, missile: false, cameraNext: false };
@@ -64,6 +70,10 @@ export class Game {
   }
 
   reset() {
+    this.replaying = false;
+    this._pendingDeath = false;
+    this.replay.resetBuffer();
+
     // Clear enemies + projectiles
     for (const e of this.enemies) { if (e.alive) { this.scene.remove(e.group); e.trail.dispose(); } }
     this.enemies = [];
@@ -107,6 +117,45 @@ export class Game {
 
   _gameOver() {
     this.running = false;
+    // Capture the death, then play it back next frame before the game-over UI.
+    this._deathPos = this.plane.position.clone();
+    this._deathTime = this._time;
+    this._pendingDeath = true;
+  }
+
+  _startReplay() {
+    // Identify the likely killer: nearest surviving enemy to the death point.
+    let killerId = null, best = Infinity;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const d = e.group.position.distanceToSquared(this._deathPos);
+      if (d < best) { best = d; killerId = 'E' + e.group.id; }
+    }
+
+    // Clear transient live FX/projectiles and hide the live aircraft so only
+    // the replay ghosts are shown.
+    this.fx.clear();
+    for (const b of this.projectiles.bullets) this.scene.remove(b.mesh);
+    this.projectiles.bullets.length = 0;
+    for (const m of this.projectiles.missiles) { this.scene.remove(m.mesh); m.trail.dispose(); }
+    this.projectiles.missiles.length = 0;
+    this.plane.group.visible = false;
+    for (const e of this.enemies) e.group.visible = false;
+
+    const ok = this.replay.begin(this._deathTime, this._deathPos, killerId);
+    if (!ok) { this._finishReplay(); return; }
+    this.replaying = true;
+    if (this.onReplayStart) this.onReplayStart();
+  }
+
+  skipReplay() {
+    if (!this.replaying) return;
+    this.replay.cleanup();
+    this._finishReplay();
+  }
+
+  _finishReplay() {
+    this.replaying = false;
     if (this.onGameOver) this.onGameOver(this.score, this.wave);
   }
 
@@ -168,6 +217,21 @@ export class Game {
 
   update(dt, w, h) {
     this._time += dt;
+
+    // Death replay takes over the camera + scene until it finishes.
+    if (this.replaying) {
+      const done = this.replay.update(dt, this.camera);
+      this.environment.update(dt, this.replay.focus);
+      this.fx.update(dt);
+      if (done) this._finishReplay();
+      return;
+    }
+    if (this._pendingDeath) {
+      this._pendingDeath = false;
+      this._startReplay();
+      return;
+    }
+
     if (!this.running) {
       // Attract screen: gently fly the jet over the sea for a live backdrop.
       if (this.plane && this.plane.alive) {
@@ -230,5 +294,8 @@ export class Game {
     });
     this.hud.updateTarget(this.currentTarget, this.camera, w, h);
     this.hud.updateRadar(this.plane, this.enemies, this.currentTarget, this._time);
+
+    // Record this frame for a potential death replay.
+    this.replay.record(this._time, this.plane, this.enemies);
   }
 }

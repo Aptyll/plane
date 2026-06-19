@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildJet } from './jetModel.js';
+import { buildJet, LIVERY } from './jetModel.js';
 import { Trail, makeAfterburner, updateAfterburner } from '../systems/effects.js';
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
@@ -12,9 +12,7 @@ export class Enemy {
     this.projectiles = projectiles;
     this.fx = fx;
 
-    // Bright, saturated red with a faint emissive base so enemies stay clearly
-    // visible against both the blue sky and the dark sea.
-    this.group = buildJet({ body: 0xe23b2f, accent: 0x8a1a14, cockpit: 0x2a0c0a, emissive: 0x5a1410 });
+    this.group = buildJet(LIVERY.red); // Warcraft red
     this.group.position.copy(pos);
     scene.add(this.group);
 

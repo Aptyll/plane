@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildJet } from './jetModel.js';
+import { buildJet, LIVERY } from './jetModel.js';
 import { Trail, makeAfterburner, updateAfterburner } from '../systems/effects.js';
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
@@ -15,8 +15,7 @@ export class Plane {
     this.projectiles = projectiles;
     this.fx = fx;
 
-    // Cool steel body with dark accents reads cleanly in the chase camera.
-    this.group = buildJet({ body: 0xaab4c0, accent: 0x27313c, cockpit: 0x0e1c28 });
+    this.group = buildJet(LIVERY.blue); // Warcraft blue
     this.group.position.set(0, 160, 0);
     scene.add(this.group);
 

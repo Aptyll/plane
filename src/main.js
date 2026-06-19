@@ -62,6 +62,7 @@ const menu = document.getElementById('menu');
 const hud = document.getElementById('hud');
 const touchUi = document.getElementById('touch-ui');
 const gameover = document.getElementById('gameover');
+const replayBanner = document.getElementById('replay-banner');
 
 function showMenu() {
   menu.classList.remove('hidden');
@@ -79,15 +80,26 @@ function startGame(autoplay = false) {
   game.setAutopilot(autoplay);
 }
 
+// While the death replay plays, clear the combat HUD and show the replay banner.
+game.onReplayStart = () => {
+  hud.classList.add('hidden');
+  touchUi.classList.add('hidden');
+  replayBanner.classList.remove('hidden');
+};
+
 game.onGameOver = (score, wave) => {
   document.getElementById('final-score').textContent = score;
   document.getElementById('final-wave').textContent = wave;
-  setTimeout(() => {
-    hud.classList.add('hidden');
-    touchUi.classList.add('hidden');
-    gameover.classList.remove('hidden');
-  }, 1400);
+  hud.classList.add('hidden');
+  touchUi.classList.add('hidden');
+  replayBanner.classList.add('hidden');
+  gameover.classList.remove('hidden');
 };
+
+// Let the player skip the replay with any tap / key press.
+const skipReplay = () => { if (game.replaying) game.skipReplay(); };
+window.addEventListener('keydown', skipReplay);
+canvas.addEventListener('pointerdown', skipReplay);
 
 document.getElementById('start-btn').addEventListener('click', () => startGame(false));
 document.getElementById('watch-btn').addEventListener('click', () => startGame(true));
