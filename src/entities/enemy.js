@@ -34,12 +34,13 @@ export class Enemy {
     this.stateTimer = 0;
     this._dir = new THREE.Vector3();
     this._desired = new THREE.Vector3();
+    this._sep = new THREE.Vector3();
     this._q = new THREE.Quaternion();
   }
 
   get position() { return this.group.position; }
 
-  update(dt, player, time) {
+  update(dt, player, time, squadron) {
     if (!this.alive) return;
     this.stateTimer -= dt;
 
@@ -78,6 +79,24 @@ export class Enemy {
     // Avoid the sea
     if (this.group.position.y < 60) desired.y += (60 - this.group.position.y) * 0.02;
     if (this.group.position.y > 1200) desired.y -= 0.4;
+
+    // Collision avoidance: steer away from nearby friendlies and the player so
+    // aircraft don't simply fly through each other.
+    if (squadron) {
+      for (const o of squadron) {
+        if (o === this || !o.alive) continue;
+        const d = this.group.position.distanceTo(o.group.position);
+        if (d < 55 && d > 0.001) {
+          const away = this._sep.copy(this.group.position).sub(o.group.position).divideScalar(d);
+          desired.addScaledVector(away, (55 - d) / 55 * 0.9);
+        }
+      }
+    }
+    const dPlayer = this.group.position.distanceTo(player.position);
+    if (dPlayer < 35 && dPlayer > 0.001) {
+      const away = this._sep.copy(this.group.position).sub(player.position).divideScalar(dPlayer);
+      desired.addScaledVector(away, (35 - dPlayer) / 35 * 1.1);
+    }
     desired.normalize();
 
     // Steer toward desired heading. Matrix4.lookAt(eye, target, up) builds a
@@ -91,7 +110,12 @@ export class Enemy {
     // Move
     this._dir.copy(FORWARD).applyQuaternion(this.group.quaternion);
     this.group.position.addScaledVector(this._dir, this.speed * dt);
-    if (this.group.position.y < 14) this.group.position.y = 14;
+    // Flying into the sea destroys the aircraft.
+    if (this.group.position.y <= 8) {
+      this.fx.explosion(this.group.position.clone(), { size: 8, color: 0x9fd8ff });
+      this.die();
+      return;
+    }
 
     // Fire when lined up
     this.fireCooldown -= dt;

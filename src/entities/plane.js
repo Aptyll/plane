@@ -26,6 +26,7 @@ export class Plane {
     this.speed = 80;
     this.alive = true;
     this.radius = 5;
+    this.crashEnabled = true; // disabled on the attract screen so the demo jet can't crash
     this.autoTurnRate = 2.9; // how fast the autopilot can swing the nose around
 
     this.maxHp = 100;
@@ -97,11 +98,8 @@ export class Plane {
     // Slight gravity sink reduces with speed/throttle (keeps it grounded-feeling).
     this.group.position.y -= (1 - this.throttle) * 6 * dt;
 
-    // Keep above the sea — clip + damage if scraping.
-    if (this.group.position.y < 12) {
-      this.group.position.y = 12;
-      if (this.speed > 60) this.takeDamage(40 * dt);
-    }
+    // Hitting the water is fatal.
+    if (this._seaCheck()) return;
     if (this.group.position.y > 1500) this.group.position.y = 1500;
 
     // ----- Weapons -----
@@ -140,11 +138,35 @@ export class Plane {
     this.forward(this._dir);
     this.group.position.addScaledVector(this._dir, this.speed * dt);
 
-    if (this.group.position.y < 12) this.group.position.y = 12;
+    if (this._seaCheck()) return;
     if (this.group.position.y > 1500) this.group.position.y = 1500;
 
     this._tickWeapons(dt);
     this._updateEffects(dt, time);
+  }
+
+  // Realistic sea impact: touching the water destroys the aircraft.
+  _seaCheck() {
+    if (this.group.position.y <= 6) {
+      if (!this.crashEnabled) { this.group.position.y = 12; return false; }
+      this.crash();
+      return true;
+    }
+    return false;
+  }
+
+  crash() {
+    if (!this.alive) return;
+    this.group.position.y = 1;
+    this.fx.explosion(this.group.position.clone(), { size: 9, color: 0x9fd8ff }); // water plume
+    this._die();
+  }
+
+  // Catastrophic mid-air collision with another aircraft.
+  collide(point) {
+    if (!this.alive) return;
+    if (point) this.fx.explosion(point, { size: 14, color: 0xffae42 });
+    this.takeDamage(this.maxHp * 2);
   }
 
   _tickWeapons(dt) {

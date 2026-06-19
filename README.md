@@ -15,6 +15,9 @@ a high score. Designed mobile- and controller-first, with full keyboard support.
   speed-based FOV, and damage smoke.
 - **Wave-based dogfighting** — enemy AI that pursues, strafes, and breaks off;
   guns + homing missiles with target lock.
+- **Realistic collisions** — mid-air aircraft collisions destroy both planes,
+  flying into the sea is fatal (with a water plume), and the enemy AI actively
+  steers to avoid colliding with its squadron and the player.
 - **Multiple cameras** — Chase (default), Wide, Cockpit, and an orbiting
   Cinematic view. Cycle them live with the **CAM** button / `C` / gamepad **Y**.
 - **Mobile + controller first** — on-screen virtual joystick & buttons, full

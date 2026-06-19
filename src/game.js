@@ -129,11 +129,49 @@ export class Game {
     this.plane.currentTarget = best;
   }
 
+  // Mid-air aircraft collisions are catastrophic for everyone involved.
+  _handleCollisions() {
+    const p = this.plane;
+    const enemies = this.enemies;
+
+    if (p.alive) {
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const r = p.radius + e.radius;
+        if (p.group.position.distanceToSquared(e.group.position) < r * r) {
+          const mid = this._tmp.copy(p.group.position).lerp(e.group.position, 0.5);
+          e.die();
+          p.collide(mid);
+          if (this.rig) this.rig.addShake(0.9);
+          break;
+        }
+      }
+    }
+
+    for (let i = 0; i < enemies.length; i++) {
+      const a = enemies[i];
+      if (!a.alive) continue;
+      for (let j = i + 1; j < enemies.length; j++) {
+        const b = enemies[j];
+        if (!b.alive) continue;
+        const r = a.radius + b.radius;
+        if (a.group.position.distanceToSquared(b.group.position) < r * r) {
+          const mid = this._tmp.copy(a.group.position).lerp(b.group.position, 0.5);
+          this.fx.explosion(mid, { size: 13, color: 0xffae42 });
+          a.die();
+          b.die();
+          break;
+        }
+      }
+    }
+  }
+
   update(dt, w, h) {
     this._time += dt;
     if (!this.running) {
       // Attract screen: gently fly the jet over the sea for a live backdrop.
       if (this.plane && this.plane.alive) {
+        this.plane.crashEnabled = false; // never crash on the menu
         this._demoInput.steerX = Math.sin(this._time * 0.35) * 0.35;
         this._demoInput.steerY = Math.sin(this._time * 0.23) * 0.12;
         this.plane.throttle = 0.7;
@@ -165,7 +203,8 @@ export class Game {
       this._selectTarget();
     }
 
-    for (const e of this.enemies) e.update(dt, this.plane, this._time);
+    for (const e of this.enemies) e.update(dt, this.plane, this._time, this.enemies);
+    this._handleCollisions();
     this.projectiles.update(dt, this.plane, this.enemies);
     this.fx.update(dt);
 
