@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { Water } from 'three/addons/objects/Water.js';
 
 // Reusable scratch colour so per-frame cloud tinting doesn't allocate.
 const _tint = new THREE.Color();
 
-// Builds the atmospheric world: sky dome, sun, reflective ocean, stylized
+// Builds the atmospheric world: sky dome, sun, stylized non-reflective ocean,
 // hand-painted clouds and lighting. Tuned for a clean, readable sky with a
 // crisp horizon and layered aerial depth.
 export class Environment {
@@ -76,27 +75,120 @@ export class Environment {
   }
 
   _buildOcean() {
-    // Large enough that its far edge stays past the fog's full-haze distance,
-    // so the player never sees the plane's rim — just a clean horizon.
+    // A stylized, non-reflective ocean. Waves are computed procedurally in the
+    // shader (no mirror reflection, no blurry render-target), giving crisp,
+    // readable swell + chop, sun glitter and foam, with the surface colour fading
+    // to the horizon haze so depth and motion read clearly.
+    // Large enough that its far edge stays past the fog's full-haze distance, so
+    // the player never sees the plane's rim — just a clean horizon.
     const geom = new THREE.PlaneGeometry(30000, 30000, 1, 1);
-    const normals = new THREE.TextureLoader().load(
-      'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/textures/waternormals.jpg',
-      (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
-    );
 
-    this.water = new Water(geom, {
-      textureWidth: this.lowQuality ? 256 : 512,
-      textureHeight: this.lowQuality ? 256 : 512,
-      waterNormals: normals,
-      sunDirection: this.sunPosition.clone().normalize(),
-      sunColor: 0xfff2e0,
-      waterColor: 0x123a57,
-      distortionScale: 3.2,
-      fog: true,
+    const vertexShader = /* glsl */`
+      varying vec3 vWorld;
+      varying float vFogDepth;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorld = wp.xyz;
+        vec4 mv = viewMatrix * wp;
+        vFogDepth = -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }
+    `;
+
+    const fragmentShader = /* glsl */`
+      uniform float uTime;
+      uniform vec3 uSunDir;
+      uniform vec3 uSunColor;
+      uniform vec3 uDeep;
+      uniform vec3 uShallow;
+      uniform vec3 uFoam;
+      uniform vec3 uSky;
+      uniform vec3 fogColor;
+      uniform float fogNear;
+      uniform float fogFar;
+      varying vec3 vWorld;
+      varying float vFogDepth;
+
+      // One directional wave; accumulates height + analytic slope so the normal
+      // always matches the surface (keeps the lighting crisp and consistent).
+      void wave(vec2 p, vec2 dir, float len, float speed, float amp, float t,
+                inout float h, inout vec2 grad) {
+        float k = 6.2831853 / len;
+        float ph = dot(p, dir) * k + t * speed;
+        h += amp * sin(ph);
+        grad += dir * (amp * k * cos(ph));
+      }
+
+      void main() {
+        vec2 p = vWorld.xz;
+        float dist = distance(cameraPosition, vWorld);
+        // Fade fine detail with distance so the far sea doesn't shimmer/alias.
+        float near = 1.0 - smoothstep(300.0, 2600.0, dist);
+        float mid  = 1.0 - smoothstep(1200.0, 6000.0, dist);
+
+        float h = 0.0;
+        vec2 grad = vec2(0.0);
+        wave(p, normalize(vec2( 0.80,  0.60)), 240.0, 1.1, 2.4, uTime, h, grad);
+        wave(p, normalize(vec2(-0.60,  0.80)), 150.0, 1.4, 1.5, uTime, h, grad);
+        wave(p, normalize(vec2( 0.90, -0.30)),  60.0, 2.1, 0.7 * mid,  uTime, h, grad);
+        wave(p, normalize(vec2(-0.20,  1.00)),  22.0, 2.8, 0.22 * near, uTime, h, grad);
+        wave(p, normalize(vec2( 0.60,  0.50)),   8.5, 3.6, 0.08 * near, uTime, h, grad);
+
+        vec3 N = normalize(vec3(-grad.x, 1.0, -grad.y));
+        vec3 V = normalize(cameraPosition - vWorld);
+        vec3 L = normalize(uSunDir);
+
+        // Deeper in the troughs, lighter on the crests.
+        float crest = clamp(h * 0.18 + 0.5, 0.0, 1.0);
+        vec3 col = mix(uDeep, uShallow, crest);
+
+        // Sky/hemisphere fill on up-facing water.
+        col += uSky * (0.10 + 0.10 * clamp(N.y, 0.0, 1.0));
+        // Sun diffuse warmth.
+        col += uSunColor * 0.12 * max(dot(N, L), 0.0);
+
+        // Sharp sun glitter — sparkle, not a mirror.
+        vec3 H = normalize(L + V);
+        float spec = pow(max(dot(N, H), 0.0), 260.0);
+        col += uSunColor * spec * 2.0;
+
+        // Subtle horizon sheen (fresnel toward grazing angles), no scene reflection.
+        float fres = pow(1.0 - max(dot(N, V), 0.0), 5.0);
+        col = mix(col, uSky, fres * 0.20);
+
+        // Foam on the steepest wave faces for readable motion + scale.
+        float foam = smoothstep(0.16, 0.32, length(grad)) * (0.4 + 0.6 * near);
+        col = mix(col, uFoam, clamp(foam, 0.0, 0.7));
+
+        // Match the scene's linear horizon fog so the sea melts into the haze.
+        col = mix(col, fogColor, smoothstep(fogNear, fogFar, vFogDepth));
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uSunDir: { value: this.sunPosition.clone().normalize() },
+        uSunColor: { value: new THREE.Color(0xfff2e0) },
+        uDeep: { value: new THREE.Color(0x0a2236) },
+        uShallow: { value: new THREE.Color(0x1d5b7a) },
+        uFoam: { value: new THREE.Color(0xdfeef5) },
+        uSky: { value: new THREE.Color(0x9fc4dd) },
+        fogColor: { value: this.fogColor },
+        fogNear: { value: 3200 },
+        fogFar: { value: 13500 },
+      },
+      vertexShader,
+      fragmentShader,
+      fog: false, // fog applied manually above to match scene.fog
     });
-    this.water.rotation.x = -Math.PI / 2;
-    this.water.position.y = 0;
-    this.scene.add(this.water);
+
+    this.ocean = new THREE.Mesh(geom, mat);
+    this.ocean.rotation.x = -Math.PI / 2;
+    this.ocean.position.y = 0;
+    this.scene.add(this.ocean);
   }
 
   _buildClouds() {
@@ -243,12 +335,13 @@ export class Environment {
   }
 
   update(dt, playerPos) {
-    // Animate water and keep ocean + clouds centered on the player so the
-    // world feels endless without a huge geometry.
-    if (this.water) {
-      this.water.material.uniforms.time.value += dt;
-      this.water.position.x = playerPos.x;
-      this.water.position.z = playerPos.z;
+    // Animate the ocean and keep it + the clouds centered on the player so the
+    // world feels endless without a huge geometry. Waves are world-space, so
+    // recentering the mesh doesn't slide them.
+    if (this.ocean) {
+      this.ocean.material.uniforms.uTime.value += dt;
+      this.ocean.position.x = playerPos.x;
+      this.ocean.position.z = playerPos.z;
     }
     // Keep the shadow-casting sun frustum centred on the player.
     if (playerPos) {
