@@ -109,6 +109,26 @@ export class Environment {
       varying vec3 vWorld;
       varying float vFogDepth;
 
+      // Cheap value noise / fbm used to break up the wave grid and add variety.
+      float hash(vec2 p) {
+        p = fract(p * vec2(123.34, 345.45));
+        p += dot(p, p + 34.345);
+        return fract(p.x * p.y);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+        for (int i = 0; i < 3; i++) { v += a * noise(p); p = m * p; a *= 0.5; }
+        return v;
+      }
+
       // One directional wave; accumulates height + analytic slope so the normal
       // always matches the surface (keeps the lighting crisp and consistent).
       void wave(vec2 p, vec2 dir, float len, float speed, float amp, float t,
@@ -126,26 +146,39 @@ export class Environment {
         float near = 1.0 - smoothstep(300.0, 2600.0, dist);
         float mid  = 1.0 - smoothstep(1200.0, 6000.0, dist);
 
+        // Domain warp bends the wavefronts so they never form a regular grid.
+        vec2 q = p * 0.004 + vec2(0.0, uTime * 0.015);
+        vec2 warp = vec2(fbm(q), fbm(q + 5.2)) - 0.5;
+        vec2 pw = p + warp * 70.0;
+
+        // Large-scale "gust" field: slow patches of calmer / choppier water.
+        float gust = fbm(p * 0.0016 + vec2(uTime * 0.008, 0.0));
+        float chop = 0.55 + 0.9 * gust;
+
+        // Many waves, non-orthogonal directions and irrational wavelengths, so
+        // the combined pattern has no visible repeat.
         float h = 0.0;
         vec2 grad = vec2(0.0);
-        wave(p, normalize(vec2( 0.80,  0.60)), 240.0, 1.1, 2.4, uTime, h, grad);
-        wave(p, normalize(vec2(-0.60,  0.80)), 150.0, 1.4, 1.5, uTime, h, grad);
-        wave(p, normalize(vec2( 0.90, -0.30)),  60.0, 2.1, 0.7 * mid,  uTime, h, grad);
-        wave(p, normalize(vec2(-0.20,  1.00)),  22.0, 2.8, 0.22 * near, uTime, h, grad);
-        wave(p, normalize(vec2( 0.60,  0.50)),   8.5, 3.6, 0.08 * near, uTime, h, grad);
+        wave(pw, normalize(vec2( 0.82,  0.57)), 237.0, 1.05, 2.2,             uTime, h, grad);
+        wave(pw, normalize(vec2(-0.51,  0.86)), 149.0, 1.30, 1.5,             uTime, h, grad);
+        wave(pw, normalize(vec2( 0.27,  0.96)),  97.0, 1.60, 1.0 * mid,       uTime, h, grad);
+        wave(pw, normalize(vec2( 0.95, -0.12)),  53.0, 2.00, 0.6 * mid * chop, uTime, h, grad);
+        wave(pw, normalize(vec2(-0.73,  0.45)),  31.0, 2.50, 0.32 * near * chop, uTime, h, grad);
+        wave(pw, normalize(vec2( 0.41, -0.83)),  18.5, 3.00, 0.18 * near * chop, uTime, h, grad);
+        wave(pw, normalize(vec2(-0.12,  0.99)),   9.7, 3.70, 0.08 * near * chop, uTime, h, grad);
 
         vec3 N = normalize(vec3(-grad.x, 1.0, -grad.y));
         vec3 V = normalize(cameraPosition - vWorld);
         vec3 L = normalize(uSunDir);
 
-        // Deeper in the troughs, lighter on the crests.
-        float crest = clamp(h * 0.18 + 0.5, 0.0, 1.0);
+        // Gentle deep/shallow shift — kept soft so troughs never read as dark cells.
+        float crest = clamp(h * 0.09 + 0.5, 0.2, 0.9);
         vec3 col = mix(uDeep, uShallow, crest);
 
-        // Sky/hemisphere fill on up-facing water.
-        col += uSky * (0.10 + 0.10 * clamp(N.y, 0.0, 1.0));
+        // Ambient sky fill with a floor so troughs stay luminous (no checkering).
+        col += uSky * (0.16 + 0.10 * clamp(N.y, 0.0, 1.0));
         // Sun diffuse warmth.
-        col += uSunColor * 0.12 * max(dot(N, L), 0.0);
+        col += uSunColor * 0.10 * max(dot(N, L), 0.0);
 
         // Sharp sun glitter — sparkle, not a mirror.
         vec3 H = normalize(L + V);
@@ -157,8 +190,11 @@ export class Environment {
         col = mix(col, uSky, fres * 0.20);
 
         // Foam on the steepest wave faces for readable motion + scale.
-        float foam = smoothstep(0.16, 0.32, length(grad)) * (0.4 + 0.6 * near);
-        col = mix(col, uFoam, clamp(foam, 0.0, 0.7));
+        float foam = smoothstep(0.18, 0.36, length(grad)) * (0.35 + 0.55 * near);
+        col = mix(col, uFoam, clamp(foam, 0.0, 0.6));
+
+        // Large-scale brightness variety so the surface isn't a uniform pattern.
+        col *= 0.88 + 0.24 * gust;
 
         // Match the scene's linear horizon fog so the sea melts into the haze.
         col = mix(col, fogColor, smoothstep(fogNear, fogFar, vFogDepth));
@@ -172,8 +208,8 @@ export class Environment {
         uTime: { value: 0 },
         uSunDir: { value: this.sunPosition.clone().normalize() },
         uSunColor: { value: new THREE.Color(0xfff2e0) },
-        uDeep: { value: new THREE.Color(0x0a2236) },
-        uShallow: { value: new THREE.Color(0x1d5b7a) },
+        uDeep: { value: new THREE.Color(0x0e2c43) },
+        uShallow: { value: new THREE.Color(0x236488) },
         uFoam: { value: new THREE.Color(0xdfeef5) },
         uSky: { value: new THREE.Color(0x9fc4dd) },
         fogColor: { value: this.fogColor },
