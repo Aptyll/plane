@@ -31,6 +31,12 @@ export class Plane {
 
     this.maxHp = 100;
     this.hp = this.maxHp;
+    this.displayName = 'Skybreaker';
+    this.team = 'ally';
+    this.id = 'player';
+    this.level = 1;
+    this.xp = 0;
+    this.lastDamagerId = null;
 
     // Weapons
     this.fireCooldown = 0;
@@ -170,7 +176,7 @@ export class Plane {
     if (point) this.fx.explosion(point, { size: 14, color: 0xffae42 });
     const threat = enemy ? {
       type: 'collision',
-      sourceId: 'E' + enemy.group.id,
+      sourceId: enemy.id,
       pos: enemy.group.position.clone(),
       dir: this.group.position.clone().sub(enemy.group.position).normalize(),
     } : null;
@@ -194,7 +200,7 @@ export class Plane {
       .addScaledVector(this._dir, 4.5)
       .addScaledVector(right, this._muzzleSide * 4.0);
     this._muzzleSide *= -1;
-    this.projectiles.spawnBullet(muzzle, this._dir.clone(), 'player');
+    this.projectiles.spawnBullet(muzzle, this._dir.clone(), 'ally', 520, 9, this.id);
   }
 
   _fireMissile() {
@@ -206,14 +212,17 @@ export class Plane {
       .addScaledVector(right, this._muzzleSide * 4.0)
       .add(new THREE.Vector3(0, -0.5, 0));
     const target = this.currentTarget && this.currentTarget.alive ? this.currentTarget : null;
-    this.projectiles.spawnMissile(muzzle, this._dir.clone(), 'player', target);
+    this.projectiles.spawnMissile(muzzle, this._dir.clone(), 'ally', target, this.id);
   }
 
   takeDamage(amount, threat) {
     if (!this.alive) return;
     this.hp -= amount;
     this.lastHitTime = performance.now() / 1000;
-    if (threat) this.lastThreat = threat; // remembered for the death replay
+    if (threat) {
+      this.lastThreat = threat;
+      if (threat.sourceId) this.lastDamagerId = threat.sourceId;
+    }
     if (this.hp <= 0) { this.hp = 0; this._die(); }
   }
 
@@ -221,6 +230,9 @@ export class Plane {
     this.alive = false;
     this.fx.explosion(this.group.position.clone(), { size: 12, color: 0xffae42 });
     this.group.visible = false;
+    this.trailL.mesh.visible = false;
+    this.trailR.mesh.visible = false;
+    this.damageTrail.mesh.visible = false;
     if (this.onDeath) this.onDeath();
   }
 

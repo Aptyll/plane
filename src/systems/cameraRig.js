@@ -21,6 +21,10 @@ export class CameraRig {
     camera.position.set(0, 175, -30);
   }
 
+  setTarget(target) {
+    this.target = target;
+  }
+
   next() {
     this.modeIndex = (this.modeIndex + 1) % MODES.length;
     this.mode = MODES[this.modeIndex];
@@ -48,7 +52,7 @@ export class CameraRig {
 
     const speedFactor = (t.speed - t.minSpeed) / (t.maxSpeed - t.minSpeed);
 
-    if (this.mode === 'chase') {
+    if (this.mode === 'chase' || this.mode === 'spectate') {
       this._desired.copy(p)
         .addScaledVector(fwd, -16 - speedFactor * 6)
         .addScaledVector(up, 5);

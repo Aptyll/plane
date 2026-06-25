@@ -6,9 +6,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { Input } from './systems/input.js';
 import { Game } from './game.js';
+import { DayCycle } from './systems/dayCycle.js';
 
 // Patch version shown on the main menu. Bump by 0.1 on every push to main.
-const PATCH_VERSION = '1.3';
+const PATCH_VERSION = '1.4';
 
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
@@ -17,7 +18,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.78;
+renderer.toneMappingExposure = 0.68;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -29,22 +30,21 @@ const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerH
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
-// Kept subtle so bright sky/sea can't bleed over the aircraft and hurt clarity.
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.22,  // strength
-  0.5,   // radius
-  0.95   // threshold — only very bright sources (afterburner, tracers, sun) bloom
+  0.16,
+  0.45,
+  1.05,
 );
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
-// SMAA only on desktop — on touch devices bloom + lower DPR already soften
-// edges, and skipping the pass keeps the frame budget for the GPU.
 if (!isTouch) composer.addPass(new SMAAPass(window.innerWidth, window.innerHeight));
 
 // ---------- Input + Game ----------
 const input = new Input();
 const game = new Game(scene, camera, renderer, input);
+game.hud.setDayCycle(DayCycle.PHASE_START, false);
+game.hud.setMatchTimer(180);
 
 // ---------- Resize ----------
 function onResize() {
@@ -65,7 +65,11 @@ const menu = document.getElementById('menu');
 const hud = document.getElementById('hud');
 const touchUi = document.getElementById('touch-ui');
 const gameover = document.getElementById('gameover');
-const replayBanner = document.getElementById('replay-banner');
+const respawnPanel = document.getElementById('respawn-panel');
+const replayPhase = document.getElementById('replay-phase');
+const respawnChoices = document.getElementById('respawn-choices');
+const respawnSecEl = document.getElementById('respawn-sec');
+const btnSpectate = document.getElementById('btn-spectate');
 
 document.getElementById('patch-version').textContent = `PATCH ${PATCH_VERSION}`;
 
@@ -74,34 +78,48 @@ function showMenu() {
   hud.classList.add('hidden');
   touchUi.classList.add('hidden');
   gameover.classList.add('hidden');
+  respawnPanel.classList.add('hidden');
 }
 
 function startGame(autoplay = false) {
   menu.classList.add('hidden');
   gameover.classList.add('hidden');
+  respawnPanel.classList.add('hidden');
   hud.classList.remove('hidden');
   if (isTouch) touchUi.classList.remove('hidden');
   game.start();
   game.setAutopilot(autoplay);
 }
 
-// While the death replay plays, clear the combat HUD and show the replay banner.
-game.onReplayStart = () => {
+game.onRespawnState = ({ phase, respawnSec, canSpectate }) => {
+  if (phase === 'hidden') {
+    respawnPanel.classList.add('hidden');
+    if (game.running) {
+      hud.classList.remove('hidden');
+      if (isTouch) touchUi.classList.remove('hidden');
+    }
+    return;
+  }
+
+  respawnPanel.classList.remove('hidden');
   hud.classList.add('hidden');
   touchUi.classList.add('hidden');
-  replayBanner.classList.remove('hidden');
+  respawnSecEl.textContent = String(respawnSec);
+  replayPhase.classList.toggle('hidden', phase !== 'replay');
+  respawnChoices.classList.toggle('hidden', phase === 'replay');
+  if (btnSpectate) btnSpectate.classList.toggle('hidden', !canSpectate);
 };
 
-game.onGameOver = (score, wave) => {
+game.onMatchEnd = (score, wave) => {
+  document.getElementById('results-title').textContent = 'MISSION COMPLETE';
   document.getElementById('final-score').textContent = score;
   document.getElementById('final-wave').textContent = wave;
   hud.classList.add('hidden');
   touchUi.classList.add('hidden');
-  replayBanner.classList.add('hidden');
+  respawnPanel.classList.add('hidden');
   gameover.classList.remove('hidden');
 };
 
-// Let the player skip the replay with any tap / key press.
 const skipReplay = () => { if (game.replaying) game.skipReplay(); };
 window.addEventListener('keydown', skipReplay);
 canvas.addEventListener('pointerdown', skipReplay);
@@ -109,6 +127,21 @@ canvas.addEventListener('pointerdown', skipReplay);
 document.getElementById('start-btn').addEventListener('click', () => startGame(false));
 document.getElementById('watch-btn').addEventListener('click', () => startGame(true));
 document.getElementById('restart-btn').addEventListener('click', () => startGame(game.autopilot));
+document.getElementById('btn-replay-again')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  game.watchReplayAgain();
+});
+document.getElementById('btn-spectate')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  game.spectateAlly();
+});
+
+document.getElementById('btn-daycycle')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (game.matchActive) return;
+  const paused = game.toggleDayCyclePause();
+  game.hud.setDayCycle(game.dayCycle.phase, paused);
+});
 
 // ---------- Loading sequence ----------
 const steps = [
@@ -131,12 +164,11 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   let dt = clock.getDelta();
-  dt = Math.min(dt, 0.05); // clamp to avoid tunneling on hitches
+  dt = Math.min(dt, 0.05);
   game.update(dt, window.innerWidth, window.innerHeight);
   composer.render();
 }
 animate();
 
-// Prevent context menu / scroll on long-press for mobile.
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());

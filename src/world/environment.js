@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { DayCycle } from '../systems/dayCycle.js';
 
 // Reusable scratch colour so per-frame cloud tinting doesn't allocate.
 const _tint = new THREE.Color();
@@ -20,11 +21,19 @@ export class Environment {
     this._buildSky();
     this._buildOcean();
     this._buildClouds();
+
+    this.dayPhase = 0.32;
+    this.daylight = 1;
+    this._fogDay = new THREE.Color(0x96b0c4);
+    this._fogNight = new THREE.Color(0x1a2840);
+    this._oceanSkyDay = new THREE.Color(0x7aa0bc);
+    this._oceanSkyNight = new THREE.Color(0x2a3d52);
+    this.setDayPhase(this.dayPhase);
   }
 
   _buildLights() {
-    // Warm key (sun) + cool sky fill for nice form definition.
-    this.sunLight = new THREE.DirectionalLight(0xfff2e0, 1.85);
+    // Strong sun key + restrained fill so aircraft keep readable form in bright sky.
+    this.sunLight = new THREE.DirectionalLight(0xfff0d8, 2.15);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(this.lowQuality ? 1024 : 2048, this.lowQuality ? 1024 : 2048);
     this.sunLight.shadow.camera.near = 1;
@@ -38,10 +47,10 @@ export class Environment {
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
-    this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0x36546e, 0.75);
+    this.hemi = new THREE.HemisphereLight(0xb8d4f0, 0x2a4558, 0.5);
     this.scene.add(this.hemi);
 
-    this.ambient = new THREE.AmbientLight(0x456480, 0.38);
+    this.ambient = new THREE.AmbientLight(0x3a5870, 0.2);
     this.scene.add(this.ambient);
   }
 
@@ -51,16 +60,14 @@ export class Environment {
     this.scene.add(this.sky);
 
     const u = this.sky.material.uniforms;
-    // Lower turbidity + a touch more Rayleigh = a cleaner, deeper blue with a
-    // bright, legible band of haze along the horizon instead of an orange murk.
-    u.turbidity.value = 4;
-    u.rayleigh.value = 2.2;
-    u.mieCoefficient.value = 0.005;
-    u.mieDirectionalG.value = 0.8;
+    // Deeper zenith + softer haze — less blown-out sky, clearer silhouettes.
+    u.turbidity.value = 5.5;
+    u.rayleigh.value = 1.75;
+    u.mieCoefficient.value = 0.003;
+    u.mieDirectionalG.value = 0.72;
 
-    // A higher mid-morning sun reads far less chaotically than a low, glaring
-    // one while still giving warm light and readable shadows.
-    const elevation = 24; // degrees
+    // Higher sun angle cuts horizontal glare while keeping warm shadows.
+    const elevation = 38; // degrees
     const azimuth = 135;
     const phi = THREE.MathUtils.degToRad(90 - elevation);
     const theta = THREE.MathUtils.degToRad(azimuth);
@@ -175,19 +182,19 @@ export class Environment {
         float crest = clamp(h * 0.09 + 0.5, 0.2, 0.9);
         vec3 col = mix(uDeep, uShallow, crest);
 
-        // Ambient sky fill with a floor so troughs stay luminous (no checkering).
-        col += uSky * (0.16 + 0.10 * clamp(N.y, 0.0, 1.0));
+        // Ambient sky fill — kept restrained so troughs don't blow out.
+        col += uSky * (0.11 + 0.07 * clamp(N.y, 0.0, 1.0));
         // Sun diffuse warmth.
-        col += uSunColor * 0.10 * max(dot(N, L), 0.0);
+        col += uSunColor * 0.12 * max(dot(N, L), 0.0);
 
         // Sharp sun glitter — sparkle, not a mirror.
         vec3 H = normalize(L + V);
         float spec = pow(max(dot(N, H), 0.0), 260.0);
-        col += uSunColor * spec * 2.0;
+        col += uSunColor * spec * 1.55;
 
         // Subtle horizon sheen (fresnel toward grazing angles), no scene reflection.
         float fres = pow(1.0 - max(dot(N, V), 0.0), 5.0);
-        col = mix(col, uSky, fres * 0.20);
+        col = mix(col, uSky, fres * 0.14);
 
         // Foam on the steepest wave faces for readable motion + scale.
         float foam = smoothstep(0.18, 0.36, length(grad)) * (0.35 + 0.55 * near);
@@ -211,10 +218,10 @@ export class Environment {
         uDeep: { value: new THREE.Color(0x0e2c43) },
         uShallow: { value: new THREE.Color(0x236488) },
         uFoam: { value: new THREE.Color(0xdfeef5) },
-        uSky: { value: new THREE.Color(0x9fc4dd) },
+        uSky: { value: new THREE.Color(0x7aa0bc) },
         fogColor: { value: this.fogColor },
-        fogNear: { value: 3200 },
-        fogFar: { value: 13500 },
+        fogNear: { value: 2600 },
+        fogFar: { value: 12000 },
       },
       vertexShader,
       fragmentShader,
@@ -243,14 +250,14 @@ export class Environment {
       count: this.lowQuality ? 16 : 24,
       minR: 1500, maxR: 6500, minH: 340, maxH: 760,
       minScale: 700, maxScale: 1700, flatten: 0.4,
-      opacity: 0.96, grayChance: 0.3,
+      opacity: 0.86, grayChance: 0.3,
     });
     // Higher deck: bigger, softer and a touch greyer — distant towers for depth.
     this._spawnCloudLayer({
       count: this.lowQuality ? 8 : 13,
       minR: 2600, maxR: 7200, minH: 1150, maxH: 1850,
       minScale: 950, maxScale: 2300, flatten: 0.34,
-      opacity: 0.84, grayChance: 0.55,
+      opacity: 0.74, grayChance: 0.55,
     });
   }
 
@@ -361,12 +368,49 @@ export class Environment {
     return tex;
   }
 
+  setDayPhase(phase) {
+    this.dayPhase = phase;
+    const day = DayCycle.daylight(phase);
+    this.daylight = day;
+    const dusk = 1 - Math.abs(day - 0.5) * 2;
+
+    const { elevation, azimuth } = DayCycle.sunAngles(phase);
+    const phi = THREE.MathUtils.degToRad(90 - elevation);
+    const theta = THREE.MathUtils.degToRad(azimuth);
+    this.sunPosition.setFromSphericalCoords(1, phi, theta);
+
+    const u = this.sky.material.uniforms;
+    u.sunPosition.value.copy(this.sunPosition);
+    u.turbidity.value = THREE.MathUtils.lerp(9, 5.5, day) + dusk * 1.5;
+    u.rayleigh.value = THREE.MathUtils.lerp(0.35, 1.75, day);
+    u.mieCoefficient.value = THREE.MathUtils.lerp(0.001, 0.003, day);
+
+    this.sunLight.intensity = THREE.MathUtils.lerp(0.06, 2.15, day);
+    this.sunLight.color.setHSL(0.09, THREE.MathUtils.lerp(0.15, 0.45, day), THREE.MathUtils.lerp(0.45, 0.92, day));
+
+    this.hemi.color.setHSL(0.58, THREE.MathUtils.lerp(0.25, 0.45, day), THREE.MathUtils.lerp(0.28, 0.78, day));
+    this.hemi.groundColor.setHSL(0.58, 0.35, THREE.MathUtils.lerp(0.12, 0.28, day));
+    this.hemi.intensity = THREE.MathUtils.lerp(0.18, 0.5, day);
+
+    this.ambient.color.setHSL(0.58, 0.3, THREE.MathUtils.lerp(0.18, 0.38, day));
+    this.ambient.intensity = THREE.MathUtils.lerp(0.12, 0.2, day);
+
+    this.fogColor.lerpColors(this._fogNight, this._fogDay, day);
+    this.scene.fog.color.copy(this.fogColor);
+    this.scene.background.copy(this.fogColor);
+
+    if (this.ocean) {
+      const ou = this.ocean.material.uniforms;
+      ou.uSunDir.value.copy(this.sunPosition).normalize();
+      ou.fogColor.value.copy(this.fogColor);
+      ou.uSky.value.lerpColors(this._oceanSkyNight, this._oceanSkyDay, day);
+    }
+  }
+
   _buildFogColor() {
-    // Linear fog: the sea stays crisp and dark up close (strong depth cues from
-    // the animated water + sun glitter), then fades to a luminous haze far out,
-    // leaving a clean horizon where the darker sea meets the bright sky.
-    this.fogColor = new THREE.Color(0xcad9e6);
-    this.scene.fog = new THREE.Fog(this.fogColor, 3200, 13500);
+    // Slightly darker haze improves contrast against bright sky and sea.
+    this.fogColor = new THREE.Color(0x96b0c4);
+    this.scene.fog = new THREE.Fog(this.fogColor, 2600, 12000);
     this.scene.background = this.fogColor.clone();
   }
 
@@ -396,7 +440,8 @@ export class Environment {
       const dist = Math.sqrt(dx * dx + dz * dz);
       const f = THREE.MathUtils.clamp((dist - 3500) / 7000, 0, 1);
       const u = c.userData;
-      u.mat.opacity = u.baseOpacity * (1 - 0.6 * f);
+      const nightDim = 0.3 + 0.7 * this.daylight;
+      u.mat.opacity = u.baseOpacity * (1 - 0.6 * f) * nightDim;
       _tint.copy(u.baseColor).lerp(this.fogColor, 0.6 * f);
       u.mat.color.copy(_tint);
     }

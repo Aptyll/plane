@@ -21,10 +21,10 @@ export function buildJet({
   // Low metalness + low env reflection so the aircraft read as solid, shaded
   // silhouettes against the bright sky/sea instead of mirroring them. Coloured
   // jets get a faint emissive base so they never disappear into shadow.
-  const litBase = emissive !== 0x000000 ? 0.28 : 0.0;
-  const bodyMat = new THREE.MeshStandardMaterial({ color: body, metalness: 0.25, roughness: 0.62, envMapIntensity: 0.35, emissive, emissiveIntensity: litBase });
-  const accentMat = new THREE.MeshStandardMaterial({ color: accent, metalness: 0.2, roughness: 0.68, envMapIntensity: 0.3, emissive, emissiveIntensity: litBase * 0.6 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: cockpit, metalness: 0.3, roughness: 0.15, transparent: true, opacity: 0.9, envMapIntensity: 0.6 });
+  const litBase = emissive !== 0x000000 ? 0.38 : 0.0;
+  const bodyMat = new THREE.MeshStandardMaterial({ color: body, metalness: 0.3, roughness: 0.58, envMapIntensity: 0.18, emissive, emissiveIntensity: litBase });
+  const accentMat = new THREE.MeshStandardMaterial({ color: accent, metalness: 0.25, roughness: 0.64, envMapIntensity: 0.15, emissive, emissiveIntensity: litBase * 0.65 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: cockpit, metalness: 0.35, roughness: 0.18, transparent: true, opacity: 0.92, envMapIntensity: 0.35 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x20262e, metalness: 0.4, roughness: 0.55, envMapIntensity: 0.25 });
 
   // Fuselage — tapered using a lathe-like cylinder.

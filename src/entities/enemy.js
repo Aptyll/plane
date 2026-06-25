@@ -4,10 +4,16 @@ import { Trail, makeAfterburner, updateAfterburner } from '../systems/effects.js
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
 
+const CALLSIGNS = [
+  'Crimson Fang', 'Iron Talon', 'Storm Viper', 'Ghost Hawk', 'Blood Raven',
+  'Night Striker', 'Steel Falcon', 'Ember Wing', 'Shadow Ace', 'Void Dart',
+  'Scarlet Bolt', 'Onyx Kite',
+];
+
 // Enemy fighter with simple but lively dogfight AI: pursue, circle, strafe,
 // and break off when overshooting. Shares the procedural jet model.
 export class Enemy {
-  constructor(scene, projectiles, fx, pos, difficulty = 1) {
+  constructor(scene, projectiles, fx, pos, difficulty = 1, squadIndex = 0) {
     this.scene = scene;
     this.projectiles = projectiles;
     this.fx = fx;
@@ -20,6 +26,14 @@ export class Enemy {
     this.radius = 6;
     this.maxHp = 30 + difficulty * 10;
     this.hp = this.maxHp;
+    this.minSpeed = 40;
+    this.maxSpeed = 130;
+    this.displayName = CALLSIGNS[squadIndex % CALLSIGNS.length];
+    this.team = 'enemy';
+    this.id = 'E' + this.group.id;
+    this.lastDamagerId = null;
+    this.level = Math.max(1, Math.floor(difficulty));
+    this.xp = 0;
     this.speed = 55 + difficulty * 6;
     this.turnRate = 0.9 + difficulty * 0.12;
     this.fireCooldown = Math.random() * 2;
@@ -40,16 +54,44 @@ export class Enemy {
 
   get position() { return this.group.position; }
 
-  update(dt, player, time, squadron) {
-    if (!this.alive) return;
+  forward(out = new THREE.Vector3()) { return out.copy(FORWARD).applyQuaternion(this.group.quaternion); }
+
+  _normalizeAllies(allies) {
+    if (Array.isArray(allies)) return allies;
+    if (allies && typeof allies.alive === 'boolean') return [allies];
+    return [];
+  }
+
+  _entityPos(entity) {
+    if (!entity?.group?.position) return null;
+    return entity.group.position;
+  }
+
+  update(dt, allies, time, squadron) {
+    if (!this.alive || !this.group?.position) return;
     this.stateTimer -= dt;
 
-    const toPlayer = this._desired.copy(player.position).sub(this.group.position);
-    const dist = toPlayer.length();
-    toPlayer.normalize();
+    const allyList = this._normalizeAllies(allies);
+    let target = null;
+    let bestDist = Infinity;
+    for (const a of allyList) {
+      if (!a?.alive) continue;
+      const pos = this._entityPos(a);
+      if (!pos) continue;
+      const d = this.group.position.distanceTo(pos);
+      if (d < bestDist) { bestDist = d; target = a; }
+    }
+    if (!target) return;
+
+    const targetPos = this._entityPos(target);
+    if (!targetPos) return;
+
+    const toTarget = this._desired.copy(targetPos).sub(this.group.position);
+    const dist = toTarget.length();
+    toTarget.normalize();
 
     this._dir.copy(FORWARD).applyQuaternion(this.group.quaternion);
-    const facing = this._dir.dot(toPlayer); // 1 = pointing at player
+    const facing = this._dir.dot(toTarget);
 
     // State machine
     if (this.state === 'pursue') {
@@ -65,13 +107,11 @@ export class Enemy {
     // Desired heading
     let desired;
     if (this.state === 'break') {
-      // Veer away to set up another pass
-      desired = toPlayer.clone().multiplyScalar(-1);
+      desired = toTarget.clone().multiplyScalar(-1);
       desired.x += Math.sin(time * 1.3 + this.group.id) * 0.6;
       desired.y += 0.25;
     } else {
-      // Aim slightly ahead of player for an intercept feel
-      desired = toPlayer.clone();
+      desired = toTarget.clone();
       if (this.state === 'strafe') desired.y += 0.05;
     }
     desired.normalize();
@@ -84,7 +124,7 @@ export class Enemy {
     // aircraft don't simply fly through each other.
     if (squadron) {
       for (const o of squadron) {
-        if (o === this || !o.alive) continue;
+        if (o === this || !o?.alive || !o.group?.position) continue;
         const d = this.group.position.distanceTo(o.group.position);
         if (d < 55 && d > 0.001) {
           const away = this._sep.copy(this.group.position).sub(o.group.position).divideScalar(d);
@@ -92,10 +132,15 @@ export class Enemy {
         }
       }
     }
-    const dPlayer = this.group.position.distanceTo(player.position);
-    if (dPlayer < 35 && dPlayer > 0.001) {
-      const away = this._sep.copy(this.group.position).sub(player.position).divideScalar(dPlayer);
-      desired.addScaledVector(away, (35 - dPlayer) / 35 * 1.1);
+    for (const a of allyList) {
+      if (!a?.alive) continue;
+      const pos = this._entityPos(a);
+      if (!pos) continue;
+      const d = this.group.position.distanceTo(pos);
+      if (d < 35 && d > 0.001) {
+        const away = this._sep.copy(this.group.position).sub(pos).divideScalar(d);
+        desired.addScaledVector(away, (35 - d) / 35 * 1.1);
+      }
     }
     desired.normalize();
 
@@ -133,22 +178,25 @@ export class Enemy {
     this.burstLeft--;
     this.fireCooldown = this.burstLeft > 0 ? this.fireRate : this.fireRate + 0.9;
     const muzzle = this.group.position.clone().addScaledVector(this._dir, 5);
-    this.projectiles.spawnBullet(muzzle, this._dir.clone(), 'enemy', 360, 7, 'E' + this.group.id);
+    this.projectiles.spawnBullet(muzzle, this._dir.clone(), 'enemy', 360, 7, this.id);
   }
 
-  takeDamage(amount, hitPos) {
+  takeDamage(amount, hitPos, killerId = null) {
     if (!this.alive) return;
+    if (killerId) this.lastDamagerId = killerId;
     this.hp -= amount;
     if (hitPos) this.fx.explosion(hitPos, { size: 1.6, color: 0xffd27f });
+    if (killerId && this.onHit) this.onHit(killerId, amount);
     if (this.hp <= 0) this.die();
   }
 
-  die() {
+  die(killerId = null) {
     if (!this.alive) return;
     this.alive = false;
+    const credited = killerId ?? this.lastDamagerId;
     this.fx.explosion(this.group.position.clone(), { size: 10, color: 0xffae42 });
     this.scene.remove(this.group);
     this.trail.dispose();
-    if (this.onDeath) this.onDeath(this);
+    if (this.onDeath) this.onDeath(this, credited);
   }
 }

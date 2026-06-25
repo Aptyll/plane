@@ -33,10 +33,11 @@ export class Replay {
     this._desiredCam = new THREE.Vector3();
   }
 
-  record(t, player, enemies) {
+  record(t, player, wingman, enemies) {
     const actors = [];
-    if (player.alive) actors.push(this._snap('P', 'blue', player.group));
-    for (const e of enemies) if (e.alive) actors.push(this._snap('E' + e.group.id, 'red', e.group));
+    if (player?.group) actors.push(this._snap('player', 'blue', player.group));
+    if (wingman?.alive && wingman.group) actors.push(this._snap(wingman.id, 'blue', wingman.group));
+    for (const e of enemies) if (e.alive) actors.push(this._snap(e.id, 'red', e.group));
     this.frames.push({ t, actors });
     const minT = t - (this.window + 0.6);
     while (this.frames.length && this.frames[0].t < minT) this.frames.shift();
@@ -86,7 +87,7 @@ export class Replay {
   // Compute a single, stable cinematic vantage from the kill geometry.
   _composeShot(threat) {
     // Victim heading at death (for fallbacks and so motion reads across screen).
-    const vel = this._actorVelocity('P');
+    const vel = this._actorVelocity('player');
 
     // Direction from the victim toward whatever killed it ("line of action").
     const type = threat && threat.type;
@@ -158,7 +159,7 @@ export class Replay {
       _qa.slerp(_qb, alpha);
       mesh.quaternion.copy(_qa);
       mesh.visible = true;
-      if (id === 'P') victimPos = mesh.position;
+      if (id === 'player') victimPos = mesh.position;
     }
 
     // Track the victim (then hold on the impact point once it's gone).
